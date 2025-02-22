@@ -6,15 +6,48 @@ from agents.interview_coach import InterviewCoachAgent
 def get_interview_coach():
     return InterviewCoachAgent(verbose=True)
 
+def initialize_session_state():
+    """Initialize all required session state variables"""
+    # Initialize user context if not exists
+    if "user_context" not in st.session_state:
+        st.session_state.user_context = {
+            "current_role": "",
+            "experience": "",
+            "skills": [],
+            "interests": [],
+            "career_goals": ""
+        }
+    
+    # Initialize interview-related states
+    if "current_interview" not in st.session_state:
+        st.session_state.current_interview = {
+            "questions": {
+                "technical_questions": [],
+                "behavioral_questions": [],
+                "scenario_questions": [],
+                "questions_to_ask": []
+            },
+            "current_question": 0,
+            "answers": {},
+            "feedback": {}
+        }
+    
+    if "saved_interviews" not in st.session_state:
+        st.session_state.saved_interviews = []
+
 def main():
     st.title("🎤 Interview Coach")
+    
+    # Initialize all session state variables
+    initialize_session_state()
     
     # Initialize the agent
     coach = get_interview_coach()
     
-    # Check if user context exists
-    if not st.session_state.user_context:
-        st.warning("Please complete your profile in the sidebar of the home page first!")
+    # Check if profile is completed
+    if not any(st.session_state.user_context.values()):
+        st.warning("Please complete your profile in the home page first!")
+        st.write("Go to the home page and fill out your profile information to get personalized interview practice.")
         return
     
     st.write("""
@@ -28,7 +61,7 @@ def main():
         st.header("Interview Details")
         role = st.text_input(
             "Target Role",
-            value=st.session_state.user_context.get("career_goals", "").split("\n")[0]
+            value=st.session_state.user_context.get("career_goals", "").split("\n")[0] if st.session_state.user_context.get("career_goals") else ""
         )
         experience_level = st.selectbox(
             "Experience Level",
@@ -44,13 +77,14 @@ def main():
         )
         
         # Skills focus
+        default_skills = st.session_state.user_context.get("skills", [])[:3] if st.session_state.user_context.get("skills") else []
         skills_focus = st.multiselect(
             "Skills to Focus On",
             options=st.session_state.user_context.get("skills", []) + [
                 "Problem Solving", "Communication", "Leadership",
                 "Technical Skills", "Project Management"
             ],
-            default=st.session_state.user_context.get("skills", [])[:3]
+            default=default_skills
         )
         
         # Submit button
@@ -58,6 +92,10 @@ def main():
     
     # Generate interview questions
     if start_button:
+        if not role:
+            st.error("Please enter a target role to begin the interview preparation.")
+            return
+            
         with st.spinner("Preparing interview questions..."):
             try:
                 # Generate questions
@@ -68,53 +106,36 @@ def main():
                     interview_type=interview_type
                 )
                 
-                # Store questions in session state
-                if "current_interview" not in st.session_state:
-                    st.session_state.current_interview = {
-                        "questions": questions["structured_data"],
-                        "current_question": 0,
-                        "answers": {},
-                        "feedback": {}
-                    }
+                # Reset and update interview session
+                st.session_state.current_interview = {
+                    "questions": questions["structured_data"],
+                    "current_question": 0,
+                    "answers": {},
+                    "feedback": {}
+                }
                 
                 st.success("Interview questions ready!")
+                st.rerun()
                 
-                # Display interview sections
-                if interview_type in ["technical", "full"]:
-                    st.header("Technical Questions")
-                    for i, q in enumerate(questions["structured_data"]["technical_questions"]):
-                        with st.expander(f"Question {i+1}"):
-                            st.write(q)
-                
-                if interview_type in ["behavioral", "full"]:
-                    st.header("Behavioral Questions")
-                    for i, q in enumerate(questions["structured_data"]["behavioral_questions"]):
-                        with st.expander(f"Question {i+1}"):
-                            st.write(q)
-                
-                st.header("Scenario-Based Questions")
-                for i, q in enumerate(questions["structured_data"]["scenario_questions"]):
-                    with st.expander(f"Scenario {i+1}"):
-                        st.write(q)
-                
-                st.header("Questions to Ask the Interviewer")
-                for i, q in enumerate(questions["structured_data"]["questions_to_ask"]):
-                    st.write(f"{i+1}. {q}")
-            
             except Exception as e:
                 st.error(f"Error generating questions: {str(e)}")
     
     # Practice interface
-    if "current_interview" in st.session_state:
+    if st.session_state.current_interview["questions"]["technical_questions"] or \
+       st.session_state.current_interview["questions"]["behavioral_questions"] or \
+       st.session_state.current_interview["questions"]["scenario_questions"]:
+        
         st.header("Practice Session")
         
-        # Get current question
-        current_idx = st.session_state.current_interview["current_question"]
+        # Get all questions in a single list
         all_questions = (
             st.session_state.current_interview["questions"]["technical_questions"] +
             st.session_state.current_interview["questions"]["behavioral_questions"] +
             st.session_state.current_interview["questions"]["scenario_questions"]
         )
+        
+        # Get current question index
+        current_idx = st.session_state.current_interview["current_question"]
         
         if current_idx < len(all_questions):
             st.subheader(f"Question {current_idx + 1}")
@@ -177,34 +198,33 @@ def main():
             
             # Overall feedback
             st.header("Interview Performance Summary")
-            total_score = sum(
-                feedback['structured_data']['score']
-                for feedback in st.session_state.current_interview["feedback"].values()
-            ) / len(st.session_state.current_interview["feedback"])
-            
-            st.metric("Overall Score", f"{total_score:.1f}%")
-            
-            # Save interview session
-            if st.button("Save Interview Session"):
-                if "saved_interviews" not in st.session_state:
-                    st.session_state.saved_interviews = []
-                st.session_state.saved_interviews.append({
-                    "role": role,
-                    "type": interview_type,
-                    "score": total_score,
-                    "date": st.session_state.get("current_date", "Today"),
-                    "feedback": st.session_state.current_interview["feedback"]
-                })
-                st.success("Interview session saved to your profile!")
+            if st.session_state.current_interview["feedback"]:
+                total_score = sum(
+                    feedback['structured_data']['score']
+                    for feedback in st.session_state.current_interview["feedback"].values()
+                ) / len(st.session_state.current_interview["feedback"])
+                
+                st.metric("Overall Score", f"{total_score:.1f}%")
+                
+                # Save interview session
+                if st.button("Save Interview Session"):
+                    st.session_state.saved_interviews.append({
+                        "role": role,
+                        "type": interview_type,
+                        "score": total_score,
+                        "date": st.session_state.get("current_date", "Today"),
+                        "feedback": st.session_state.current_interview["feedback"]
+                    })
+                    st.success("Interview session saved to your profile!")
             
             # Start new session
             if st.button("Start New Interview"):
-                del st.session_state.current_interview
+                initialize_session_state()
                 st.rerun()
     
     # Previous interviews in sidebar
     with st.sidebar:
-        if "saved_interviews" in st.session_state and st.session_state.saved_interviews:
+        if st.session_state.saved_interviews:
             st.header("Previous Interviews")
             for interview in st.session_state.saved_interviews:
                 with st.expander(f"{interview['role']} - {interview['date']}"):

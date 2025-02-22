@@ -96,8 +96,8 @@ def update_user_activity(activity_type: str, description: str):
     if "activities" not in st.session_state.user_context:
         st.session_state.user_context["activities"] = []
     st.session_state.user_context["activities"].insert(0, activity)
-    # Save updated state
-    data_persistence.save_session_state()
+    # Save updated state with session_state argument
+    data_persistence.save_session_state(dict(st.session_state))
 
 def main():
     st.title("🚀 Career Assistant Multi-Agent System")
