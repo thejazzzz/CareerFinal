@@ -6,15 +6,37 @@ from agents.career_navigator import CareerNavigatorAgent
 def get_career_navigator():
     return CareerNavigatorAgent(verbose=True)
 
+def initialize_session_state():
+    """Initialize required session state variables"""
+    if "user_context" not in st.session_state:
+        st.session_state.user_context = {
+            "current_role": "",
+            "experience": "",
+            "skills": [],
+            "interests": [],
+            "career_goals": "",
+            "activities": []
+        }
+    
+    if "career_path" not in st.session_state:
+        st.session_state.career_path = None
+    
+    if "saved_career_plans" not in st.session_state:
+        st.session_state.saved_career_plans = []
+
 def main():
+    # Initialize session state first
+    initialize_session_state()
+    
     st.title("🧭 Career Navigator")
     
     # Initialize the agent
     navigator = get_career_navigator()
     
-    # Check if user context exists
-    if not st.session_state.user_context:
-        st.warning("Please complete your profile in the sidebar of the home page first!")
+    # Check if user context exists and has any values
+    if not any(st.session_state.user_context.values()):
+        st.warning("Please complete your profile in the home page first!")
+        st.write("Go to the home page and fill out your profile information to get personalized career guidance.")
         return
     
     st.write("""
@@ -122,6 +144,15 @@ def main():
                         st.write("**Salary Range:**")
                         for item in role_analysis["structured_data"]["salary"]:
                             st.write(f"• {item}")
+                    
+                    # Display key companies for this path
+                    st.write(f"**Key Companies for {path} in {industry}:**")
+                    company_cols = st.columns(3)
+                    for j, company in enumerate(role_analysis["structured_data"]["companies"]):
+                        with company_cols[j % 3]:
+                            st.write(f"• {company}")
+                    
+                    st.divider()  # Add a visual separator between paths
                 
                 # Timeline
                 st.header("Career Development Timeline")
@@ -140,13 +171,6 @@ def main():
                     st.header("Industry Trends")
                     for trend in career_path["structured_data"]["trends"]:
                         st.info(trend)
-                
-                # Key companies
-                st.header(f"Key Companies in {industry}")
-                company_cols = st.columns(3)
-                for i, company in enumerate(role_analysis["structured_data"]["companies"]):
-                    with company_cols[i % 3]:
-                        st.write(f"• {company}")
                 
                 # Save career plan
                 if st.button("Save Career Plan"):

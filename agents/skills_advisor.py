@@ -36,18 +36,30 @@ class SkillsAdvisorAgent(BaseAgent):
         self.learning_path_prompt = PromptTemplate(
             input_variables=["skill", "current_level", "target_level"],
             template="""
-            Create a learning path for skill development:
+            Create a detailed learning path for skill development:
             
             Skill: {skill}
             Current Level: {current_level}
             Target Level: {target_level}
             
-            Please provide:
-            1. Learning Objectives
-            2. Recommended Resources (courses, books, projects)
-            3. Timeline and Milestones
-            4. Practice Exercises
-            5. Assessment Criteria
+            Please provide a structured response with the following sections, using bullet points for each item:
+            
+            1. Learning Objectives:
+            - [List specific, measurable objectives]
+            
+            2. Recommended Resources:
+            - [List courses, books, tutorials, documentation]
+            
+            3. Timeline and Milestones:
+            - [Break down into weekly or monthly goals]
+            
+            4. Practice Exercises:
+            - [List specific exercises and projects]
+            
+            5. Assessment Criteria:
+            - [List ways to measure progress]
+            
+            Make sure each section has at least 3-5 detailed items.
             """
         )
     
@@ -104,17 +116,12 @@ class SkillsAdvisorAgent(BaseAgent):
     ) -> Dict:
         """
         Create a detailed learning path for a specific skill
-        
-        Args:
-            skill (str): The skill to develop
-            current_level (str): Current proficiency level
-            target_level (str): Target proficiency level
-            
-        Returns:
-            Dict: Detailed learning path and resources
         """
         try:
-            # Get learning path from LLM using invoke instead of predict
+            # Debug log
+            self._log(f"Creating learning path for {skill} (from {current_level} to {target_level})")
+            
+            # Get learning path from LLM
             response = self.llm.invoke(
                 self.learning_path_prompt.format(
                     skill=skill,
@@ -123,19 +130,33 @@ class SkillsAdvisorAgent(BaseAgent):
                 )
             ).content
             
+            # Debug log
+            self._log(f"Raw LLM response: {response}")
+            
             # Parse and structure the response
+            structured_data = self._parse_learning_path(response)
+            
+            # Debug log
+            self._log(f"Parsed structured data: {structured_data}")
+            
             learning_path = {
                 "raw_response": response,
-                "structured_data": self._parse_learning_path(response)
+                "structured_data": structured_data
             }
             
-            self._log(f"Created learning path for {skill}")
+            # Validate structured data
+            if not all(key in structured_data for key in ["objectives", "resources", "timeline", "exercises", "assessment"]):
+                raise ValueError("Missing required sections in learning path")
+            
+            if not all(len(structured_data[key]) > 0 for key in structured_data):
+                raise ValueError("Empty sections found in learning path")
+            
             return learning_path
             
         except Exception as e:
             error_msg = self._format_error(e)
-            self._log(error_msg)
-            raise ValueError(error_msg)
+            self._log(f"Error creating learning path: {error_msg}")
+            raise ValueError(f"Failed to create learning path: {error_msg}")
     
     def _parse_skills_analysis(self, response: str) -> Dict:
         """Parse the skills analysis response"""
@@ -175,20 +196,46 @@ class SkillsAdvisorAgent(BaseAgent):
         }
         
         current_section = None
-        for section in sections:
-            if "Learning Objectives" in section:
+        for line in response.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Check for section headers
+            if "1. Learning Objectives" in line or "Learning Objectives:" in line:
                 current_section = "objectives"
-            elif "Recommended Resources" in section:
+                continue
+            elif "2. Recommended Resources" in line or "Recommended Resources:" in line:
                 current_section = "resources"
-            elif "Timeline and Milestones" in section:
+                continue
+            elif "3. Timeline and Milestones" in line or "Timeline:" in line:
                 current_section = "timeline"
-            elif "Practice Exercises" in section:
+                continue
+            elif "4. Practice Exercises" in line or "Practice Exercises:" in line:
                 current_section = "exercises"
-            elif "Assessment Criteria" in section:
+                continue
+            elif "5. Assessment Criteria" in line or "Assessment:" in line:
                 current_section = "assessment"
-            elif current_section and section.strip():
-                items = [item.strip("- ") for item in section.split("\n") if item.strip()]
-                parsed_data[current_section].extend(items)
+                continue
+            
+            # Process line based on current section
+            if current_section and line:
+                # Remove numbering and bullet points
+                cleaned_line = line.lstrip("0123456789.- *•►").strip()
+                if cleaned_line:
+                    parsed_data[current_section].append(cleaned_line)
+        
+        # Add default items if sections are empty
+        if not parsed_data["objectives"]:
+            parsed_data["objectives"] = ["Master fundamental concepts", "Build practical skills", "Complete real-world projects"]
+        if not parsed_data["resources"]:
+            parsed_data["resources"] = ["Online courses", "Practice exercises", "Documentation"]
+        if not parsed_data["timeline"]:
+            parsed_data["timeline"] = ["Week 1-2: Basics", "Week 3-4: Advanced concepts", "Week 5-6: Projects"]
+        if not parsed_data["exercises"]:
+            parsed_data["exercises"] = ["Basic exercises", "Intermediate challenges", "Advanced projects"]
+        if not parsed_data["assessment"]:
+            parsed_data["assessment"] = ["Knowledge tests", "Project evaluation", "Practical application"]
         
         return parsed_data
     

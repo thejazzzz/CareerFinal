@@ -53,18 +53,17 @@ class ProfileDashboard:
             st.warning("No skills added yet")
             return
             
-        skills = self.user_context['skills']
+        # Count total number of skills
+        total_skills = len(self.user_context['skills'])
+        
+        # For now, we'll consider all skills as intermediate level
+        # until we implement proper skill level tracking
         levels = {
             'beginner': 0,
-            'intermediate': 0,
+            'intermediate': total_skills,  # Temporarily assign all skills as intermediate
             'advanced': 0,
             'expert': 0
         }
-        
-        for skill in skills:
-            level = skill.get('level', 'beginner').lower()
-            if level in levels:
-                levels[level] += 1
         
         fig = go.Figure(data=[
             go.Bar(
@@ -75,12 +74,22 @@ class ProfileDashboard:
         ])
         
         fig.update_layout(
-            title="Skill Level Distribution",
+            title="Skill Distribution",
             xaxis_title="Skill Level",
             yaxis_title="Number of Skills"
         )
         
+        # Display the skills list
         st.plotly_chart(fig)
+        
+        # Display the actual skills
+        st.subheader("Your Skills")
+        skills_list = self.user_context['skills']
+        if skills_list:
+            # Create columns for better visual organization
+            cols = st.columns(3)
+            for i, skill in enumerate(skills_list):
+                cols[i % 3].write(f"• {skill}")
     
     def display_recent_activity(self):
         """Display recent activity timeline"""

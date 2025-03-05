@@ -22,15 +22,32 @@ class ResumeAnalyzerAgent(BaseAgent):
             Resume Text:
             {resume_text}
             
-            Please extract and organize the following information:
-            1. Professional Summary (2-3 sentences)
-            2. Skills (List all technical and soft skills)
-            3. Work Experience (Company, Role, Duration, Key Achievements)
-            4. Education
+            Please extract and organize the following information in this exact format:
             
-            Also provide:
-            - Key Strengths (Top 3-5)
-            - Areas for Improvement (2-3 suggestions)
+            PROFESSIONAL_SUMMARY:
+            [Write 2-3 sentences summarizing the candidate's profile]
+            
+            SKILLS:
+            - [Technical Skill 1]
+            - [Technical Skill 2]
+            - [Soft Skill 1]
+            - [Soft Skill 2]
+            
+            WORK_EXPERIENCE:
+            - [Position 1]
+            - [Position 2]
+            
+            EDUCATION:
+            - [Education 1]
+            - [Education 2]
+            
+            KEY_STRENGTHS:
+            - [Strength 1]
+            - [Strength 2]
+            
+            AREAS_FOR_IMPROVEMENT:
+            - [Improvement 1]
+            - [Improvement 2]
             """
         )
     
@@ -72,7 +89,7 @@ class ResumeAnalyzerAgent(BaseAgent):
         """Parse the LLM response into a structured format"""
         sections = response.split("\n\n")
         parsed_data = {
-            "professional_summary": [],
+            "professional_summary": "",
             "skills": [],
             "work_experience": [],
             "education": [],
@@ -81,22 +98,42 @@ class ResumeAnalyzerAgent(BaseAgent):
         }
         
         current_section = None
-        for section in sections:
-            if "Professional Summary" in section:
+        for line in response.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Check for section headers
+            if "PROFESSIONAL_SUMMARY:" in line:
                 current_section = "professional_summary"
-            elif "Skills" in section:
+                continue
+            elif "SKILLS:" in line:
                 current_section = "skills"
-            elif "Work Experience" in section:
+                continue
+            elif "WORK_EXPERIENCE:" in line:
                 current_section = "work_experience"
-            elif "Education" in section:
+                continue
+            elif "EDUCATION:" in line:
                 current_section = "education"
-            elif "Key Strengths" in section:
+                continue
+            elif "KEY_STRENGTHS:" in line:
                 current_section = "key_strengths"
-            elif "Areas for Improvement" in section:
+                continue
+            elif "AREAS_FOR_IMPROVEMENT:" in line:
                 current_section = "areas_for_improvement"
-            elif current_section and section.strip():
-                items = [item.strip("- ") for item in section.split("\n") if item.strip()]
-                parsed_data[current_section].extend(items)
+                continue
+            
+            # Process line based on current section
+            if current_section and line:
+                if current_section == "professional_summary":
+                    parsed_data[current_section] = line
+                elif line.startswith("-"):
+                    # Remove the bullet point and any leading/trailing whitespace
+                    cleaned_item = line.lstrip("- ").strip()
+                    if cleaned_item:
+                        parsed_data[current_section].append(cleaned_item)
+                elif current_section in ["work_experience", "education"] and line:
+                    parsed_data[current_section].append(line)
         
         return parsed_data
     

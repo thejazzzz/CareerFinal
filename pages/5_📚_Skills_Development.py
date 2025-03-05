@@ -147,6 +147,10 @@ def main():
             
         with st.spinner("Creating learning path..."):
             try:
+                # Debug container
+                debug_container = st.empty()
+                debug_container.info("Initializing learning path creation...")
+                
                 # Get learning path
                 learning_path = advisor.create_learning_path(
                     skill=skill_to_learn,
@@ -154,34 +158,89 @@ def main():
                     target_level=target_level
                 )
                 
+                # Debug output
+                debug_container.write({
+                    "Debug Info": {
+                        "Selected Skill": skill_to_learn,
+                        "Current Level": current_level,
+                        "Target Level": target_level,
+                        "Response Keys": list(learning_path.keys()),
+                        "Structured Data Keys": list(learning_path["structured_data"].keys()),
+                        "Data Preview": {
+                            k: v[:2] if isinstance(v, list) else v 
+                            for k, v in learning_path["structured_data"].items()
+                        }
+                    }
+                })
+                
+                # Validate response structure
+                if "structured_data" not in learning_path:
+                    st.error("Invalid response format! 'structured_data' missing.")
+                    st.stop()
+                
+                required_sections = ["objectives", "resources", "timeline", "exercises", "assessment"]
+                missing_sections = [
+                    section for section in required_sections 
+                    if section not in learning_path["structured_data"]
+                ]
+                
+                if missing_sections:
+                    st.error(f"Missing sections in learning path: {', '.join(missing_sections)}")
+                    st.stop()
+                
+                # Store in session state
+                st.session_state["current_learning_path"] = learning_path
+                
                 # Display learning path
                 st.success(f"Learning path created for {skill_to_learn}!")
                 
-                # Learning objectives
-                st.subheader("Learning Objectives")
-                for obj in learning_path["structured_data"]["objectives"]:
-                    st.write(f"🎯 {obj}")
+                # Learning objectives with validation
+                st.subheader("🎯 Learning Objectives")
+                objectives = learning_path["structured_data"]["objectives"]
+                if objectives:
+                    for obj in objectives:
+                        st.write(f"• {obj}")
+                else:
+                    st.warning("No learning objectives found.")
+                st.divider()
                 
                 # Resources and timeline
                 col7, col8 = st.columns(2)
                 
                 with col7:
-                    st.subheader("Recommended Resources")
-                    for resource in learning_path["structured_data"]["resources"]:
-                        st.write(f"📚 {resource}")
+                    st.subheader("📚 Recommended Resources")
+                    resources = learning_path["structured_data"]["resources"]
+                    if resources:
+                        for resource in resources:
+                            with st.expander(f"Resource: {resource.split(':')[0] if ':' in resource else resource}"):
+                                st.write(resource)
+                    else:
+                        st.warning("No resources found.")
                     
-                    st.subheader("Practice Exercises")
-                    for exercise in learning_path["structured_data"]["exercises"]:
-                        st.write(f"✍️ {exercise}")
+                    st.subheader("✍️ Practice Exercises")
+                    exercises = learning_path["structured_data"]["exercises"]
+                    if exercises:
+                        for i, exercise in enumerate(exercises, 1):
+                            st.write(f"{i}. {exercise}")
+                    else:
+                        st.warning("No practice exercises found.")
                 
                 with col8:
-                    st.subheader("Timeline and Milestones")
-                    for milestone in learning_path["structured_data"]["timeline"]:
-                        st.write(f"⏱️ {milestone}")
+                    st.subheader("⏱️ Timeline and Milestones")
+                    timeline = learning_path["structured_data"]["timeline"]
+                    if timeline:
+                        for milestone in timeline:
+                            st.info(milestone)
+                    else:
+                        st.warning("No timeline found.")
                     
-                    st.subheader("Assessment Criteria")
-                    for criterion in learning_path["structured_data"]["assessment"]:
-                        st.write(f"📋 {criterion}")
+                    st.subheader("📋 Assessment Criteria")
+                    assessment = learning_path["structured_data"]["assessment"]
+                    if assessment:
+                        for criterion in assessment:
+                            st.success(criterion)
+                    else:
+                        st.warning("No assessment criteria found.")
                 
                 # Save to skill progress
                 if st.button("Track This Skill"):
@@ -192,9 +251,12 @@ def main():
                         "learning_path": learning_path["structured_data"]
                     }
                     st.success(f"Now tracking progress for {skill_to_learn}!")
+                    st.rerun()
             
             except Exception as e:
                 st.error(f"Error creating learning path: {str(e)}")
+                st.write("Detailed error information:")
+                st.exception(e)
     
     # Progress tracking section
     if st.session_state.skill_progress:
