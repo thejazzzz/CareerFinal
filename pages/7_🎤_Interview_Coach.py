@@ -1,5 +1,6 @@
 import streamlit as st
 from agents.interview_coach import InterviewCoachAgent
+from typing import List, Dict
 
 # Initialize the interview coach agent
 @st.cache_resource
@@ -19,18 +20,25 @@ def initialize_session_state():
         }
     
     # Initialize interview-related states
-    if "current_interview" not in st.session_state:
-        st.session_state.current_interview = {
-            "questions": {
-                "technical_questions": [],
-                "behavioral_questions": [],
-                "scenario_questions": [],
-                "questions_to_ask": []
-            },
-            "current_question": 0,
-            "answers": {},
-            "feedback": {}
-        }
+    default_interview_state = {
+        "questions": {
+            "technical_questions": [],
+            "behavioral_questions": [],
+            "scenario_questions": [],
+            "questions_to_ask": []
+        },
+        "current_question": 0,
+        "answers": {},
+        "feedback": {}
+    }
+    
+    # If current_interview doesn't exist or is None, initialize it with default state
+    if not st.session_state.get("current_interview"):
+        st.session_state.current_interview = default_interview_state
+    else:
+        # If it exists but questions is None, initialize questions
+        if not st.session_state.current_interview.get("questions"):
+            st.session_state.current_interview["questions"] = default_interview_state["questions"]
     
     if "saved_interviews" not in st.session_state:
         st.session_state.saved_interviews = []
@@ -106,121 +114,182 @@ def main():
                     interview_type=interview_type
                 )
                 
-                # Reset and update interview session
-                st.session_state.current_interview = {
-                    "questions": questions["structured_data"],
-                    "current_question": 0,
-                    "answers": {},
-                    "feedback": {}
-                }
+                # Debug information
+                #st.write("Raw response from LLM:", questions.get("raw_response", "No response"))
                 
-                st.success("Interview questions ready!")
-                st.rerun()
+                # Display questions
+                if questions and "structured_data" in questions:
+                    structured_data = questions["structured_data"]
+                    
+                    # Technical Questions
+                    st.subheader("Technical Questions")
+                    tech_questions = structured_data.get("technical_questions", [])
+                    if tech_questions:
+                        for i, q in enumerate(tech_questions, 1):
+                            st.write(f"{i}. {q}")
+                    else:
+                        st.write("No technical questions generated")
+                    
+                    # Behavioral Questions
+                    st.subheader("Behavioral Questions")
+                    behav_questions = structured_data.get("behavioral_questions", [])
+                    if behav_questions:
+                        for i, q in enumerate(behav_questions, 1):
+                            st.write(f"{i}. {q}")
+                    else:
+                        st.write("No behavioral questions generated")
+                    
+                    # Scenario Questions
+                    st.subheader("Scenario Questions")
+                    scen_questions = structured_data.get("scenario_questions", [])
+                    if scen_questions:
+                        for i, q in enumerate(scen_questions, 1):
+                            st.write(f"{i}. {q}")
+                    else:
+                        st.write("No scenario questions generated")
+                    
+                    # Questions to Ask
+                    st.subheader("Questions to Ask Interviewer")
+                    ask_questions = structured_data.get("questions_to_ask", [])
+                    if ask_questions:
+                        for i, q in enumerate(ask_questions, 1):
+                            st.write(f"{i}. {q}")
+                    else:
+                        st.write("No questions to ask generated")
+                    
+                    # Update session state
+                    st.session_state.current_interview = {
+                        "questions": structured_data,
+                        "current_question": 0,
+                        "answers": {},
+                        "feedback": {}
+                    }
+                    
+                    if any(structured_data.values()):
+                        st.success("Interview questions generated successfully!")
+                    else:
+                        st.error("No questions were generated. Please try again.")
                 
             except Exception as e:
                 st.error(f"Error generating questions: {str(e)}")
-    
+
+    # Add a separator between question generation and practice session
+    st.divider()
+
     # Practice interface
-    if st.session_state.current_interview["questions"]["technical_questions"] or \
-       st.session_state.current_interview["questions"]["behavioral_questions"] or \
-       st.session_state.current_interview["questions"]["scenario_questions"]:
+    if (st.session_state.get("current_interview") and 
+        isinstance(st.session_state.current_interview.get("questions", {}), dict)):
         
-        st.header("Practice Session")
+        questions = st.session_state.current_interview.get("questions", {})
         
-        # Get all questions in a single list
-        all_questions = (
-            st.session_state.current_interview["questions"]["technical_questions"] +
-            st.session_state.current_interview["questions"]["behavioral_questions"] +
-            st.session_state.current_interview["questions"]["scenario_questions"]
+        # Debug output
+        st.write("Current Interview State:", st.session_state.current_interview)
+        
+        has_questions = bool(
+            questions.get("technical_questions", []) or
+            questions.get("behavioral_questions", []) or
+            questions.get("scenario_questions", [])
         )
         
-        # Get current question index
-        current_idx = st.session_state.current_interview["current_question"]
-        
-        if current_idx < len(all_questions):
-            st.subheader(f"Question {current_idx + 1}")
-            st.write(all_questions[current_idx])
+        if has_questions:
+            st.header("Practice Session")
             
-            # Answer input
-            answer = st.text_area("Your Answer:", height=150)
+            # Get all questions in a single list
+            all_questions = (
+                questions.get("technical_questions", []) +
+                questions.get("behavioral_questions", []) +
+                questions.get("scenario_questions", [])
+            )
             
-            col1, col2, col3 = st.columns([1, 1, 1])
+            # Get current question index
+            current_idx = st.session_state.current_interview.get("current_question", 0)
             
-            with col1:
-                if st.button("Previous Question") and current_idx > 0:
-                    st.session_state.current_interview["current_question"] -= 1
+            if current_idx < len(all_questions):
+                st.subheader(f"Question {current_idx + 1} of {len(all_questions)}")
+                st.write(all_questions[current_idx])
+                
+                # Answer input
+                answer = st.text_area("Your Answer:", height=150)
+                
+                col1, col2, col3 = st.columns([1, 1, 1])
+                
+                with col1:
+                    if st.button("Previous Question") and current_idx > 0:
+                        st.session_state.current_interview["current_question"] -= 1
+                        st.rerun()
+                
+                with col2:
+                    if answer and st.button("Submit Answer"):
+                        with st.spinner("Analyzing your response..."):
+                            # Get feedback
+                            feedback = coach.evaluate_response(
+                                question=all_questions[current_idx],
+                                answer=answer,
+                                role=role,
+                                experience_level=experience_level
+                            )
+                            
+                            # Store feedback
+                            st.session_state.current_interview["answers"][current_idx] = answer
+                            st.session_state.current_interview["feedback"][current_idx] = feedback
+                            
+                            # Display feedback
+                            st.write("**Feedback:**")
+                            st.metric(
+                                "Response Score",
+                                f"{feedback['structured_data']['score']}%"
+                            )
+                            
+                            st.write("**Strengths:**")
+                            for strength in feedback['structured_data']['strengths']:
+                                st.success(f"✓ {strength}")
+                            
+                            st.write("**Areas for Improvement:**")
+                            for improvement in feedback['structured_data']['improvements']:
+                                st.info(f"↗ {improvement}")
+                            
+                            st.write("**Sample Better Response:**")
+                            st.write(feedback['structured_data']['better_response'])
+                            
+                            with st.expander("Additional Tips"):
+                                for tip in feedback['structured_data']['tips']:
+                                    st.write(f"• {tip}")
+                
+                with col3:
+                    if st.button("Next Question") and current_idx < len(all_questions) - 1:
+                        st.session_state.current_interview["current_question"] += 1
+                        st.rerun()
+            
+            else:
+                st.success("Interview practice complete!")
+                
+                # Overall feedback
+                st.header("Interview Performance Summary")
+                if st.session_state.current_interview["feedback"]:
+                    total_score = sum(
+                        feedback['structured_data']['score']
+                        for feedback in st.session_state.current_interview["feedback"].values()
+                    ) / len(st.session_state.current_interview["feedback"])
+                    
+                    st.metric("Overall Score", f"{total_score:.1f}%")
+                    
+                    # Save interview session
+                    if st.button("Save Interview Session"):
+                        st.session_state.saved_interviews.append({
+                            "role": role,
+                            "type": interview_type,
+                            "score": total_score,
+                            "date": st.session_state.get("current_date", "Today"),
+                            "feedback": st.session_state.current_interview["feedback"]
+                        })
+                        st.success("Interview session saved to your profile!")
+                
+                # Start new session
+                if st.button("Start New Interview"):
+                    initialize_session_state()
                     st.rerun()
-            
-            with col2:
-                if answer and st.button("Submit Answer"):
-                    with st.spinner("Analyzing your response..."):
-                        # Get feedback
-                        feedback = coach.evaluate_response(
-                            question=all_questions[current_idx],
-                            answer=answer,
-                            role=role,
-                            experience_level=experience_level
-                        )
-                        
-                        # Store feedback
-                        st.session_state.current_interview["answers"][current_idx] = answer
-                        st.session_state.current_interview["feedback"][current_idx] = feedback
-                        
-                        # Display feedback
-                        st.write("**Feedback:**")
-                        st.metric(
-                            "Response Score",
-                            f"{feedback['structured_data']['score']}%"
-                        )
-                        
-                        st.write("**Strengths:**")
-                        for strength in feedback['structured_data']['strengths']:
-                            st.success(f"✓ {strength}")
-                        
-                        st.write("**Areas for Improvement:**")
-                        for improvement in feedback['structured_data']['improvements']:
-                            st.info(f"↗ {improvement}")
-                        
-                        st.write("**Sample Better Response:**")
-                        st.write(feedback['structured_data']['better_response'])
-                        
-                        with st.expander("Additional Tips"):
-                            for tip in feedback['structured_data']['tips']:
-                                st.write(f"• {tip}")
-            
-            with col3:
-                if st.button("Next Question") and current_idx < len(all_questions) - 1:
-                    st.session_state.current_interview["current_question"] += 1
-                    st.rerun()
-        
         else:
-            st.success("Interview practice complete!")
-            
-            # Overall feedback
-            st.header("Interview Performance Summary")
-            if st.session_state.current_interview["feedback"]:
-                total_score = sum(
-                    feedback['structured_data']['score']
-                    for feedback in st.session_state.current_interview["feedback"].values()
-                ) / len(st.session_state.current_interview["feedback"])
-                
-                st.metric("Overall Score", f"{total_score:.1f}%")
-                
-                # Save interview session
-                if st.button("Save Interview Session"):
-                    st.session_state.saved_interviews.append({
-                        "role": role,
-                        "type": interview_type,
-                        "score": total_score,
-                        "date": st.session_state.get("current_date", "Today"),
-                        "feedback": st.session_state.current_interview["feedback"]
-                    })
-                    st.success("Interview session saved to your profile!")
-            
-            # Start new session
-            if st.button("Start New Interview"):
-                initialize_session_state()
-                st.rerun()
+            st.info("No interview questions generated yet. Please fill out the form above to start.")
     
     # Previous interviews in sidebar
     with st.sidebar:

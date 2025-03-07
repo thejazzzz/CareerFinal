@@ -1,6 +1,7 @@
 from typing import Dict, List
 from .base_agent import BaseAgent
 from langchain.prompts import PromptTemplate
+import re
 
 class InterviewCoachAgent(BaseAgent):
     def __init__(self, verbose: bool = False):
@@ -140,8 +141,7 @@ class InterviewCoachAgent(BaseAgent):
             raise ValueError(error_msg)
     
     def _parse_questions(self, response: str) -> Dict:
-        """Parse the generated interview questions"""
-        sections = response.split("\n\n")
+        """Parse the generated interview questions with improved error handling"""
         parsed_data = {
             "technical_questions": [],
             "behavioral_questions": [],
@@ -149,21 +149,61 @@ class InterviewCoachAgent(BaseAgent):
             "questions_to_ask": []
         }
         
-        current_section = None
-        for section in sections:
-            if "Technical Questions" in section:
-                current_section = "technical_questions"
-            elif "Behavioral Questions" in section:
-                current_section = "behavioral_questions"
-            elif "Role-specific Scenarios" in section:
-                current_section = "scenario_questions"
-            elif "Questions to Ask" in section:
-                current_section = "questions_to_ask"
-            elif current_section and section.strip():
-                items = [item.strip("- ") for item in section.split("\n") if item.strip()]
-                parsed_data[current_section].extend(items)
-        
-        return parsed_data
+        try:
+            # Split the response into sections
+            sections = response.split('\n')
+            current_section = None
+            
+            for line in sections:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                # Check for section headers
+                if "Technical Questions:" in line:
+                    current_section = "technical_questions"
+                    continue
+                elif "Behavioral Questions:" in line:
+                    current_section = "behavioral_questions"
+                    continue
+                elif "Role-specific Scenarios:" in line:
+                    current_section = "scenario_questions"
+                    continue
+                elif "Questions to Ask" in line:
+                    current_section = "questions_to_ask"
+                    continue
+                
+                # Extract questions
+                # Remove leading numbers and special characters
+                if line and current_section:
+                    # Remove leading numbers (1., 2., etc.)
+                    question = re.sub(r'^\d+\.\s*', '', line).strip()
+                    
+                    # Skip if it's empty after cleaning
+                    if not question:
+                        continue
+                        
+                    # Skip if it's a section header
+                    if any(header in question for header in ["Technical Questions:", "Behavioral Questions:", 
+                                                           "Role-specific Scenarios:", "Questions to Ask"]):
+                        continue
+                    
+                    # Add the question to the appropriate section
+                    if len(question) > 5:  # Ensure it's a valid question
+                        parsed_data[current_section].append(question)
+            
+            # Debug output
+            for section, questions in parsed_data.items():
+                print(f"Parsed {section}: {len(questions)} questions")
+                for q in questions:
+                    print(f"- {q}")
+            
+            return parsed_data
+            
+        except Exception as e:
+            print(f"Error parsing questions: {str(e)}")
+            print(f"Raw response being parsed: {response}")
+            return parsed_data
     
     def _parse_evaluation(self, response: str) -> Dict:
         """Parse the response evaluation"""

@@ -114,8 +114,8 @@ def main():
                 # Display results
                 st.success("Career Plan Created!")
                 
-                # Career paths
-                st.header("Potential Career Paths")
+                # Career paths with improved display
+                st.header("🎯 Potential Career Paths")
                 for i, path in enumerate(career_path["structured_data"]["path_options"], 1):
                     st.subheader(f"Path {i}: {path}")
                     
@@ -126,7 +126,6 @@ def main():
                     )
                     
                     col1, col2 = st.columns(2)
-                    
                     with col1:
                         st.write("**Role Overview:**")
                         for item in role_analysis["structured_data"]["overview"]:
@@ -145,32 +144,57 @@ def main():
                         for item in role_analysis["structured_data"]["salary"]:
                             st.write(f"• {item}")
                     
-                    # Display key companies for this path
-                    st.write(f"**Key Companies for {path} in {industry}:**")
-                    company_cols = st.columns(3)
-                    for j, company in enumerate(role_analysis["structured_data"]["companies"]):
-                        with company_cols[j % 3]:
-                            st.write(f"• {company}")
-                    
-                    st.divider()  # Add a visual separator between paths
+                    st.divider()
                 
-                # Timeline
-                st.header("Career Development Timeline")
-                for i, milestone in enumerate(career_path["structured_data"]["timeline"], 1):
-                    st.write(f"{i}. {milestone}")
+                # Timeline with improved display
+                st.header("📅 Career Development Timeline")
+                timeline = career_path["structured_data"]["timeline"]
+                if timeline:
+                    for milestone in timeline:
+                        st.info(milestone)
+                else:
+                    st.warning("No timeline information available")
                 
-                # Challenges and solutions
-                col3, col4 = st.columns(2)
+                # Challenges and Solutions with improved display
+                st.header("🎯 Challenges and Solutions")
+                challenges = career_path["structured_data"]["challenges"]
+                solutions = career_path["structured_data"]["solutions"]
+                if challenges and solutions:
+                    for challenge, solution in zip(challenges, solutions):
+                        with st.expander(f"Challenge: {challenge}"):
+                            st.write("**Solution:**")
+                            st.write(solution)
+                else:
+                    st.warning("No challenges and solutions available")
+                
+                # Industry Trends with improved display
+                st.header("📈 Industry Trends")
+                trends = career_path["structured_data"]["trends"]
+                if trends:
+                    for trend in trends:
+                        st.success(trend)
+                else:
+                    st.warning("No industry trends available")
+                
+                # Required Skills with improved display
+                st.header("🎓 Required Skills and Certifications")
+                skills_data = career_path["structured_data"]["required_skills"]
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.subheader("Technical Skills")
+                    for skill in skills_data["technical"]:
+                        st.write(f"• {skill}")
+                
+                with col2:
+                    st.subheader("Soft Skills")
+                    for skill in skills_data["soft"]:
+                        st.write(f"• {skill}")
                 
                 with col3:
-                    st.header("Potential Challenges")
-                    for challenge in career_path["structured_data"]["challenges"]:
-                        st.warning(challenge)
-                
-                with col4:
-                    st.header("Industry Trends")
-                    for trend in career_path["structured_data"]["trends"]:
-                        st.info(trend)
+                    st.subheader("Certifications")
+                    for cert in skills_data["certifications"]:
+                        st.write(f"• {cert}")
                 
                 # Save career plan
                 if st.button("Save Career Plan"):

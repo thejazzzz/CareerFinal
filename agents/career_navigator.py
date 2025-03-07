@@ -14,20 +14,50 @@ class CareerNavigatorAgent(BaseAgent):
         self.career_path_prompt = PromptTemplate(
             input_variables=["current_role", "experience", "skills", "interests", "goals"],
             template="""
-            Create a personalized career path based on the following information:
+            Based on the following profile, create a detailed career development plan:
+
+            CURRENT PROFILE:
+            - Role: {current_role}
+            - Experience: {experience}
+            - Skills: {skills}
+            - Interests: {interests}
+            - Career Goals: {goals}
+
+            Please provide a structured analysis in the following format:
+
+            CAREER PATH OPTIONS:
+            1. [Path 1 with role progression]
+            2. [Path 2 with role progression]
+            3. [Path 3 with role progression]
+
+            DEVELOPMENT TIMELINE:
+            - Short-term (0-2 years): [Specific milestones and objectives]
+            - Medium-term (2-5 years): [Specific milestones and objectives]
+            - Long-term (5+ years): [Specific milestones and objectives]
+
+            POTENTIAL CHALLENGES AND SOLUTIONS:
+            Challenge 1: [Specific challenge]
+            Solution 1: [Detailed solution]
+            Challenge 2: [Specific challenge]
+            Solution 2: [Detailed solution]
+
+            INDUSTRY TRENDS AND OPPORTUNITIES:
+            1. [Current trend and its impact]
+            2. [Emerging opportunity and how to leverage it]
+            3. [Future prediction and preparation strategy]
+
+            REQUIRED SKILLS AND CERTIFICATIONS:
+            Technical Skills:
+            - [Key technical skill 1]
+            - [Key technical skill 2]
             
-            Current Role: {current_role}
-            Experience: {experience}
-            Skills: {skills}
-            Interests: {interests}
-            Career Goals: {goals}
+            Soft Skills:
+            - [Key soft skill 1]
+            - [Key soft skill 2]
             
-            Please provide:
-            1. Career Path Options (3-5 paths)
-            2. Required Skills and Qualifications
-            3. Timeline and Milestones
-            4. Potential Challenges and Solutions
-            5. Industry Trends and Opportunities
+            Recommended Certifications:
+            - [Relevant certification 1]
+            - [Relevant certification 2]
             """
         )
         
@@ -70,12 +100,12 @@ class CareerNavigatorAgent(BaseAgent):
             Dict: Career path recommendations and analysis
         """
         try:
-            # Format inputs for prompt
-            skills_text = "\n".join(f"- {skill}" for skill in skills)
-            interests_text = "\n".join(f"- {interest}" for interest in interests)
-            goals_text = "\n".join(f"- {goal}" for goal in goals)
+            # Format inputs
+            skills_text = ", ".join(skills)
+            interests_text = ", ".join(interests)
+            goals_text = ", ".join(goals)
             
-            # Get career path analysis from LLM using invoke instead of predict
+            # Get career path analysis
             response = self.llm.invoke(
                 self.career_path_prompt.format(
                     current_role=current_role,
@@ -87,9 +117,19 @@ class CareerNavigatorAgent(BaseAgent):
             ).content
             
             # Parse and structure the response
+            parsed_data = self._parse_career_path(response)
+            
+            # Validate parsed data
+            if not any(parsed_data["path_options"]):
+                self._log("Warning: No career path options found in response")
+            if not any(parsed_data["timeline"]):
+                self._log("Warning: No timeline entries found in response")
+            if not any(parsed_data["trends"]):
+                self._log("Warning: No industry trends found in response")
+            
             career_path = {
                 "raw_analysis": response,
-                "structured_data": self._parse_career_path(response)
+                "structured_data": parsed_data
             }
             
             self._log(f"Created career path plan for {current_role}")
@@ -135,31 +175,101 @@ class CareerNavigatorAgent(BaseAgent):
             raise ValueError(error_msg)
     
     def _parse_career_path(self, response: str) -> Dict:
-        """Parse the career path response"""
-        sections = response.split("\n\n")
+        """Parse the career path response with improved section detection"""
         parsed_data = {
             "path_options": [],
-            "required_skills": [],
             "timeline": [],
             "challenges": [],
-            "trends": []
+            "solutions": [],
+            "trends": [],
+            "required_skills": {
+                "technical": [],
+                "soft": [],
+                "certifications": []
+            }
         }
         
+        # Split into major sections first
+        sections = response.split("\n\n")
         current_section = None
+        current_skill_type = None
+        
         for section in sections:
-            if "Career Path Options" in section:
-                current_section = "path_options"
-            elif "Required Skills" in section:
-                current_section = "required_skills"
-            elif "Timeline" in section:
-                current_section = "timeline"
-            elif "Potential Challenges" in section:
-                current_section = "challenges"
-            elif "Industry Trends" in section:
-                current_section = "trends"
-            elif current_section and section.strip():
-                items = [item.strip("- ") for item in section.split("\n") if item.strip()]
-                parsed_data[current_section].extend(items)
+            section = section.strip()
+            if not section:
+                continue
+            
+            # Identify major sections
+            if "CAREER PATH OPTIONS:" in section:
+                lines = section.split("\n")[1:]  # Skip the header
+                for line in lines:
+                    if line.strip() and any(c.isdigit() for c in line):
+                        path = line.split(".", 1)[1].strip() if "." in line else line.strip()
+                        if path:
+                            parsed_data["path_options"].append(path)
+            
+            elif "DEVELOPMENT TIMELINE:" in section:
+                lines = section.split("\n")[1:]  # Skip the header
+                for line in lines:
+                    if line.strip().startswith("-"):
+                        timeline_item = line.strip("- ").strip()
+                        if timeline_item:
+                            parsed_data["timeline"].append(timeline_item)
+            
+            elif "POTENTIAL CHALLENGES AND SOLUTIONS:" in section:
+                lines = section.split("\n")[1:]  # Skip the header
+                challenge = None
+                for line in lines:
+                    line = line.strip()
+                    if line.startswith("Challenge"):
+                        challenge = line.split(":", 1)[1].strip() if ":" in line else line.strip()
+                        if challenge:
+                            parsed_data["challenges"].append(challenge)
+                    elif line.startswith("Solution") and challenge:
+                        solution = line.split(":", 1)[1].strip() if ":" in line else line.strip()
+                        if solution:
+                            parsed_data["solutions"].append(solution)
+            
+            elif "INDUSTRY TRENDS AND OPPORTUNITIES:" in section:
+                lines = section.split("\n")[1:]  # Skip the header
+                for line in lines:
+                    if line.strip() and any(c.isdigit() for c in line):
+                        trend = line.split(".", 1)[1].strip() if "." in line else line.strip()
+                        if trend:
+                            parsed_data["trends"].append(trend)
+            
+            elif "REQUIRED SKILLS AND CERTIFICATIONS:" in section:
+                lines = section.split("\n")[1:]  # Skip the header
+                current_type = None
+                for line in lines:
+                    line = line.strip()
+                    if "Technical Skills:" in line:
+                        current_type = "technical"
+                    elif "Soft Skills:" in line:
+                        current_type = "soft"
+                    elif "Recommended Certifications:" in line:
+                        current_type = "certifications"
+                    elif line.startswith("-") and current_type:
+                        skill = line.strip("- ").strip()
+                        if skill:
+                            parsed_data["required_skills"][current_type].append(skill)
+        
+        # Ensure we have matching challenges and solutions
+        if len(parsed_data["challenges"]) > len(parsed_data["solutions"]):
+            parsed_data["challenges"] = parsed_data["challenges"][:len(parsed_data["solutions"])]
+        elif len(parsed_data["solutions"]) > len(parsed_data["challenges"]):
+            parsed_data["solutions"] = parsed_data["solutions"][:len(parsed_data["challenges"])]
+        
+        # Add default values if sections are empty
+        if not parsed_data["path_options"]:
+            parsed_data["path_options"] = ["Career path information not available"]
+        if not parsed_data["timeline"]:
+            parsed_data["timeline"] = ["Timeline information not available"]
+        if not parsed_data["challenges"] or not parsed_data["solutions"]:
+            parsed_data["challenges"] = ["Challenge information not available"]
+            parsed_data["solutions"] = ["Solution information not available"]
+        if not parsed_data["trends"]:
+            parsed_data["trends"] = ["Industry trend information not available"]
         
         return parsed_data
     

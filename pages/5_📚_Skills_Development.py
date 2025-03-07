@@ -1,5 +1,6 @@
 import streamlit as st
 from agents.skills_advisor import SkillsAdvisorAgent
+from datetime import datetime
 
 # Initialize the skills advisor agent
 @st.cache_resource
@@ -85,30 +86,60 @@ def main():
                 )
                 
                 # Display results
-                st.success("Skill analysis complete!")
-                
-                col3, col4 = st.columns(2)
-                
-                with col3:
-                    st.subheader("Skill Gaps")
-                    for gap in analysis["structured_data"]["skill_gaps"]:
-                        st.warning(f"🎯 {gap}")
+                if "structured_data" in analysis:
+                    st.success("Skill analysis complete!")
                     
-                    st.subheader("Priority Skills to Develop")
-                    for skill in analysis["structured_data"]["priority_skills"]:
-                        st.info(f"📈 {skill}")
-                
-                with col4:
-                    st.subheader("Learning Resources")
-                    for resource in analysis["structured_data"]["learning_resources"]:
-                        st.write(f"📚 {resource}")
+                    # Create two columns for the display
+                    col3, col4 = st.columns(2)
                     
-                    st.subheader("Career Transition Strategy")
-                    for strategy in analysis["structured_data"]["transition_strategy"]:
-                        st.write(f"🔄 {strategy}")
-            
+                    with col3:
+                        # Skill Gaps
+                        st.subheader("🔍 Skill Gaps")
+                        gaps = analysis["structured_data"]["skill_gaps"]
+                        if gaps:
+                            for gap in gaps:
+                                st.warning(f"⚠️ {gap}")
+                        else:
+                            st.info("No significant skill gaps identified.")
+                        
+                        # Priority Skills
+                        st.subheader("🎯 Priority Skills to Develop")
+                        priorities = analysis["structured_data"]["priority_skills"]
+                        if priorities:
+                            for skill in priorities:
+                                st.info(f"📈 {skill}")
+                        else:
+                            st.info("No priority skills identified.")
+                    
+                    with col4:
+                        # Learning Resources
+                        st.subheader("📚 Learning Resources")
+                        resources = analysis["structured_data"]["learning_resources"]
+                        if resources:
+                            for resource in resources:
+                                st.write(f"• {resource}")
+                        else:
+                            st.info("No specific resources recommended.")
+                        
+                        # Career Transition Strategy
+                        st.subheader("🔄 Career Transition Strategy")
+                        strategies = analysis["structured_data"]["transition_strategy"]
+                        if strategies:
+                            for strategy in strategies:
+                                st.write(f"• {strategy}")
+                        else:
+                            st.info("No specific transition strategy provided.")
+                    
+                    # Add a separator before the learning path section
+                    st.markdown("---")
+                
+                else:
+                    st.error("Failed to generate structured analysis.")
+                
             except Exception as e:
                 st.error(f"Error analyzing skills: {str(e)}")
+                if st.checkbox("Show detailed error"):
+                    st.exception(e)
     
     # Learning path section
     st.header("Create Learning Path")
@@ -147,31 +178,12 @@ def main():
             
         with st.spinner("Creating learning path..."):
             try:
-                # Debug container
-                debug_container = st.empty()
-                debug_container.info("Initializing learning path creation...")
-                
                 # Get learning path
                 learning_path = advisor.create_learning_path(
                     skill=skill_to_learn,
                     current_level=current_level,
                     target_level=target_level
                 )
-                
-                # Debug output
-                debug_container.write({
-                    "Debug Info": {
-                        "Selected Skill": skill_to_learn,
-                        "Current Level": current_level,
-                        "Target Level": target_level,
-                        "Response Keys": list(learning_path.keys()),
-                        "Structured Data Keys": list(learning_path["structured_data"].keys()),
-                        "Data Preview": {
-                            k: v[:2] if isinstance(v, list) else v 
-                            for k, v in learning_path["structured_data"].items()
-                        }
-                    }
-                })
                 
                 # Validate response structure
                 if "structured_data" not in learning_path:
@@ -242,43 +254,82 @@ def main():
                     else:
                         st.warning("No assessment criteria found.")
                 
-                # Save to skill progress
+                # After displaying the learning path content
                 if st.button("Track This Skill"):
-                    st.session_state.skill_progress[skill_to_learn] = {
-                        "current_level": current_level,
-                        "target_level": target_level,
-                        "start_date": st.session_state.get("current_date", "Today"),
-                        "learning_path": learning_path["structured_data"]
-                    }
-                    st.success(f"Now tracking progress for {skill_to_learn}!")
-                    st.rerun()
+                    try:
+                        # Create a new skill progress entry
+                        new_skill_progress = {
+                            "skill_name": skill_to_learn,
+                            "current_level": current_level,
+                            "target_level": target_level,
+                            "start_date": datetime.now().strftime("%Y-%m-%d"),
+                            "learning_path": learning_path["structured_data"],
+                            "completed_objectives": [],
+                            "progress_percentage": 0
+                        }
+                        
+                        # Initialize skill_progress if it doesn't exist
+                        if "skill_progress" not in st.session_state:
+                            st.session_state.skill_progress = {}
+                        
+                        # Add or update the skill progress
+                        st.session_state.skill_progress[skill_to_learn] = new_skill_progress
+                        
+                        # Force a rerun to update the display
+                        st.rerun()
+            
+                    except Exception as e:
+                        st.error(f"Error tracking skill: {str(e)}")
+                        if st.checkbox("Show detailed error"):
+                            st.exception(e)
             
             except Exception as e:
                 st.error(f"Error creating learning path: {str(e)}")
                 st.write("Detailed error information:")
                 st.exception(e)
     
-    # Progress tracking section
-    if st.session_state.skill_progress:
-        st.header("Your Skill Progress")
+    # Move the progress tracking section outside of the if create_path_button block
+    if st.session_state.get("skill_progress"):
+        st.markdown("---")
+        st.header("🎯 Your Tracked Skills")
         
         for skill, progress in st.session_state.skill_progress.items():
             with st.expander(f"{skill} - {progress['current_level']} → {progress['target_level']}"):
-                st.write(f"**Started:** {progress['start_date']}")
+                col1, col2 = st.columns(2)
                 
-                # Display progress through objectives
-                completed_objectives = st.multiselect(
-                    "Completed Objectives",
-                    options=progress["learning_path"]["objectives"],
-                    default=[],
-                    key=f"objectives_{skill}"
-                )
+                with col1:
+                    st.markdown(f"**Started:** {progress['start_date']}")
+                    st.markdown(f"**Current Level:** {progress['current_level']}")
+                    st.markdown(f"**Target Level:** {progress['target_level']}")
                 
-                progress_percentage = len(completed_objectives) / len(progress["learning_path"]["objectives"]) * 100
-                st.progress(progress_percentage)
-                st.metric("Progress", f"{progress_percentage:.1f}%")
+                with col2:
+                    # Progress tracking
+                    completed = st.multiselect(
+                        "Completed Objectives",
+                        options=progress["learning_path"]["objectives"],
+                        default=progress.get("completed_objectives", []),
+                        key=f"tracked_objectives_{skill}"
+                    )
+                    
+                    # Update progress
+                    progress["completed_objectives"] = completed
+                    progress_percentage = (len(completed) / len(progress["learning_path"]["objectives"])) * 100
+                    progress["progress_percentage"] = progress_percentage
+                    
+                    # Display progress
+                    st.progress(progress_percentage)
+                    st.metric("Progress", f"{progress_percentage:.1f}%")
                 
-                if st.button("Remove Tracking", key=f"remove_{skill}"):
+                # Display remaining objectives
+                remaining = [obj for obj in progress["learning_path"]["objectives"] 
+                           if obj not in completed]
+                if remaining:
+                    st.markdown("**Next Objectives:**")
+                    for obj in remaining[:3]:
+                        st.info(f"• {obj}")
+                
+                # Option to remove tracking
+                if st.button("Stop Tracking", key=f"remove_{skill}"):
                     del st.session_state.skill_progress[skill]
                     st.rerun()
 

@@ -160,29 +160,53 @@ class SkillsAdvisorAgent(BaseAgent):
     
     def _parse_skills_analysis(self, response: str) -> Dict:
         """Parse the skills analysis response"""
-        sections = response.split("\n\n")
-        parsed_data = {
-            "skill_gaps": [],
-            "priority_skills": [],
-            "learning_resources": [],
-            "transition_strategy": []
-        }
-        
-        current_section = None
-        for section in sections:
-            if "Skill Gap Analysis" in section:
-                current_section = "skill_gaps"
-            elif "Priority Skills" in section:
-                current_section = "priority_skills"
-            elif "Learning Resources" in section:
-                current_section = "learning_resources"
-            elif "Career Transition Strategy" in section:
-                current_section = "transition_strategy"
-            elif current_section and section.strip():
-                items = [item.strip("- ") for item in section.split("\n") if item.strip()]
-                parsed_data[current_section].extend(items)
-        
-        return parsed_data
+        try:
+            parsed_data = {
+                "skill_gaps": [],
+                "priority_skills": [],
+                "learning_resources": [],
+                "transition_strategy": []
+            }
+            
+            # Split into sections and process each line
+            current_section = None
+            for line in response.split('\n'):
+                line = line.strip()
+                if not line:
+                    continue
+                    
+                # Identify sections
+                if "Skill Gap Analysis" in line or "Gap Analysis" in line:
+                    current_section = "skill_gaps"
+                    continue
+                elif "Priority Skills" in line:
+                    current_section = "priority_skills"
+                    continue
+                elif "Learning Resources" in line or "Resources" in line:
+                    current_section = "learning_resources"
+                    continue
+                elif "Career Transition Strategy" in line or "Transition Strategy" in line:
+                    current_section = "transition_strategy"
+                    continue
+                
+                # Add items to current section if line starts with a bullet point or number
+                if current_section and (line.startswith(('-', '•', '*')) or 
+                                      any(line.startswith(f"{i}.") for i in range(1, 10))):
+                    # Clean the line by removing bullets and numbers
+                    cleaned_line = line.lstrip("0123456789.- *•").strip()
+                    if cleaned_line:
+                        parsed_data[current_section].append(cleaned_line)
+            
+            # Debug logging
+            self._log(f"Parsed sections: {[k for k, v in parsed_data.items() if v]}")
+            self._log(f"Number of items parsed: {sum(len(v) for v in parsed_data.values())}")
+            
+            return parsed_data
+            
+        except Exception as e:
+            self._log(f"Error parsing skills analysis: {str(e)}")
+            self._log(f"Raw response: {response}")
+            return parsed_data
     
     def _parse_learning_path(self, response: str) -> Dict:
         """Parse the learning path response"""

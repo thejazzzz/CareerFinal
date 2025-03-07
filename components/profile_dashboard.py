@@ -76,20 +76,66 @@ class ProfileDashboard:
         fig.update_layout(
             title="Skill Distribution",
             xaxis_title="Skill Level",
-            yaxis_title="Number of Skills"
+            yaxis_title="Number of Skills",
+            height=300  # Reduced height for better layout
         )
         
-        # Display the skills list
-        st.plotly_chart(fig)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    def render_skills_section(self):
+        """Render the skills section with improved layout"""
+        st.subheader("Skills Management")
         
-        # Display the actual skills
-        st.subheader("Your Skills")
-        skills_list = self.user_context['skills']
-        if skills_list:
-            # Create columns for better visual organization
-            cols = st.columns(3)
-            for i, skill in enumerate(skills_list):
-                cols[i % 3].write(f"• {skill}")
+        # Single column layout for skills
+        with st.container():
+            # Add new skills
+            with st.form("add_skills", clear_on_submit=True):
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    new_skill = st.text_input("Add New Skill", placeholder="Enter a skill...")
+                with col2:
+                    submit_button = st.form_submit_button("Add", use_container_width=True)
+                
+                if submit_button and new_skill:
+                    if "skills" not in self.user_context:
+                        self.user_context["skills"] = []
+                    if new_skill not in self.user_context["skills"]:
+                        self.user_context["skills"].append(new_skill)
+                        st.success("✅ Skill added!")
+                    else:
+                        st.warning("⚠️ Skill already exists")
+            
+            # Display skills in a grid
+            if self.user_context.get('skills'):
+                st.markdown("##### Current Skills")
+                skills_list = self.user_context['skills']
+                cols = st.columns(3)
+                for i, skill in enumerate(skills_list):
+                    with cols[i % 3]:
+                        # Create a container for each skill with better visibility
+                        st.markdown(
+                            f"""
+                            <div style='
+                                background-color: #e6e6e6;
+                                padding: 8px 15px;
+                                border-radius: 5px;
+                                margin: 5px 0;
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                                color: #333333;
+                                font-size: 0.9em;
+                            '>
+                                <span>{skill}</span>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+                        if st.button("🗑️", key=f"remove_skill_{i}", help="Remove skill"):
+                            self.user_context["skills"].pop(i)
+                            st.rerun()
+            else:
+                st.info("No skills added yet. Add your skills to get started!")
     
     def display_recent_activity(self):
         """Display recent activity timeline"""
@@ -125,9 +171,53 @@ class ProfileDashboard:
                 self.user_context.get('experience', 'Not specified')
             )
         
-        # Skills breakdown
-        st.subheader("Skills Analysis")
+        # Skills Section with new layout
+        st.markdown("---")
+        self.render_skills_section()
+        
+        # Skills Analysis Chart
+        st.markdown("---")
         self.display_skill_breakdown()
+        
+        # Education Section
+        st.markdown("---")
+        st.subheader("Education")
+        with st.expander("Add/Edit Education", expanded=True):
+            # Form for adding new education
+            with st.form("add_education"):
+                col1, col2, col3 = st.columns([2, 2, 1])
+                with col1:
+                    degree = st.text_input("Degree/Certificate")
+                with col2:
+                    institution = st.text_input("Institution")
+                with col3:
+                    year = st.text_input("Year of Completion")
+                
+                if st.form_submit_button("Add Education"):
+                    if degree and institution and year:
+                        new_education = {
+                            "degree": degree,
+                            "institution": institution,
+                            "year": year
+                        }
+                        if "education" not in self.user_context:
+                            self.user_context["education"] = []
+                        self.user_context["education"].append(new_education)
+                        st.success("Education added successfully!")
+                    else:
+                        st.error("Please fill all education fields")
+            
+            # Display and edit existing education
+            if self.user_context.get("education"):
+                st.write("Current Education:")
+                for i, edu in enumerate(self.user_context["education"]):
+                    col1, col2 = st.columns([4, 1])
+                    with col1:
+                        st.write(f"**{edu['degree']}** - {edu['institution']} ({edu['year']})")
+                    with col2:
+                        if st.button("Remove", key=f"remove_edu_{i}"):
+                            self.user_context["education"].pop(i)
+                            st.rerun()
         
         # Career goals and interests
         col3, col4 = st.columns(2)
