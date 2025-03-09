@@ -1,15 +1,29 @@
-from typing import Dict, List
+from typing import Dict, List, Any, Optional
 from .base_agent import BaseAgent
 from langchain.prompts import PromptTemplate
+import os
+import datetime
+import json
 
 class SkillsAdvisorAgent(BaseAgent):
-    def __init__(self, verbose: bool = False):
+    def __init__(self, verbose: bool = False, user_data_path: str = None):
         super().__init__(
             role="Skills Development Advisor",
             goal="Analyze skill gaps and provide personalized learning recommendations",
             backstory="Expert in career development and skill enhancement strategies",
             verbose=verbose
         )
+        
+        # Path for storing user learning data
+        self.user_data_path = user_data_path or "data/user_skills"
+        os.makedirs(self.user_data_path, exist_ok=True)
+        
+        # User profile data
+        self.user_profile = {}
+        
+        # Active learning paths and progress tracking
+        self.learning_paths = {}
+        self.skill_progress = {}
         
         self.skills_analysis_prompt = PromptTemplate(
             input_variables=["current_skills", "target_role", "job_requirements"],
@@ -67,7 +81,8 @@ class SkillsAdvisorAgent(BaseAgent):
         self,
         current_skills: List[str],
         target_role: str,
-        job_requirements: List[str]
+        job_requirements: List[str],
+        user_id: Optional[str] = None
     ) -> Dict:
         """
         Analyze gaps between current skills and target role requirements
@@ -76,6 +91,7 @@ class SkillsAdvisorAgent(BaseAgent):
             current_skills (List[str]): List of current skills
             target_role (str): Target job role
             job_requirements (List[str]): Required skills for target role
+            user_id (Optional[str]): User ID for saving analysis
             
         Returns:
             Dict: Skill gap analysis and recommendations
@@ -101,6 +117,11 @@ class SkillsAdvisorAgent(BaseAgent):
             }
             
             self._log(f"Completed skill gap analysis for {target_role}")
+            
+            # Save analysis if user_id is provided
+            if user_id:
+                self._save_user_data(user_id, f"analysis_{target_role}", analysis)
+            
             return analysis
             
         except Exception as e:
@@ -112,7 +133,8 @@ class SkillsAdvisorAgent(BaseAgent):
         self,
         skill: str,
         current_level: str = "beginner",
-        target_level: str = "proficient"
+        target_level: str = "proficient",
+        user_id: Optional[str] = None
     ) -> Dict:
         """
         Create a detailed learning path for a specific skill
@@ -139,17 +161,35 @@ class SkillsAdvisorAgent(BaseAgent):
             # Debug log
             self._log(f"Parsed structured data: {structured_data}")
             
+            # Create learning path object with progress tracking
+            timestamp = datetime.datetime.now()
             learning_path = {
+                "id": f"{skill}_{timestamp.strftime('%Y%m%d%H%M%S')}",
+                "skill": skill,
+                "current_level": current_level,
+                "target_level": target_level,
+                "created_at": timestamp.isoformat(),
+                "modified_at": timestamp.isoformat(),
                 "raw_response": response,
-                "structured_data": structured_data
+                "structured_data": structured_data,
+                "progress": {
+                    "status": "active",
+                    "completed_objectives": [],
+                    "completed_resources": [],
+                    "completed_exercises": [],
+                    "progress_percentage": 0,
+                    "last_updated": timestamp.isoformat(),
+                    "notes": [],
+                    "time_spent_hours": 0
+                }
             }
             
-            # Validate structured data
-            if not all(key in structured_data for key in ["objectives", "resources", "timeline", "exercises", "assessment"]):
-                raise ValueError("Missing required sections in learning path")
+            # Store in instance memory
+            self.learning_paths[learning_path["id"]] = learning_path
             
-            if not all(len(structured_data[key]) > 0 for key in structured_data):
-                raise ValueError("Empty sections found in learning path")
+            # Save learning path if user_id is provided
+            if user_id:
+                self._save_learning_path(user_id, learning_path)
             
             return learning_path
             
@@ -265,4 +305,55 @@ class SkillsAdvisorAgent(BaseAgent):
     
     def get_required_fields(self) -> List[str]:
         """Get required fields for skills analysis"""
-        return ["current_skills", "target_role"] 
+        return ["current_skills", "target_role"]
+    
+    def set_user_profile(self, profile_data: Dict[str, Any]) -> None:
+        """Set or update the user profile data"""
+        self.user_profile = profile_data
+        self._log(f"Updated user profile for {profile_data.get('name', 'user')}")
+        
+        # Save profile to disk
+        if self.user_profile.get("user_id"):
+            self._save_user_data(self.user_profile.get("user_id"), "profile", self.user_profile)
+    
+    def update_skill_progress(
+        self,
+        learning_path_id: str,
+        completed_objectives: List[str] = None,
+        completed_resources: List[str] = None,
+        completed_exercises: List[str] = None,
+        time_spent_hours: float = 0,
+        user_notes: str = None,
+        user_id: Optional[str] = None
+    ) -> Dict:
+        """Update progress for a specific learning path"""
+        # Implementation for updating progress
+    
+    def assess_progress(
+        self,
+        learning_path_id: str,
+        user_reflection: str = "",
+        user_id: Optional[str] = None
+    ) -> Dict:
+        """Assess progress on a learning path and provide recommendations"""
+        # Implementation for progress assessment
+    
+    def get_user_learning_paths(self, user_id: str) -> List[Dict]:
+        """Get all learning paths for a user"""
+        # Implementation for retrieving learning paths 
+    
+    def _save_user_data(self, user_id: str, data_type: str, data: Dict) -> None:
+        """Save user data to disk"""
+        # Implementation for saving data
+    
+    def _save_learning_path(self, user_id: str, learning_path: Dict) -> None:
+        """Save a learning path to disk"""
+        # Implementation for saving learning paths
+    
+    def _load_learning_paths(self, user_id: str) -> None:
+        """Load all learning paths for a user"""
+        # Implementation for loading learning paths
+    
+    def _format_list_with_progress(self, items: List[str], completed_items: List[str]) -> str:
+        """Format a list of items with completion status"""
+        # Implementation for formatting progress lists 

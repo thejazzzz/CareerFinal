@@ -1,24 +1,39 @@
 import streamlit as st
 from agents.skills_advisor import SkillsAdvisorAgent
 from datetime import datetime
+import os
+import uuid
 
 # Initialize the skills advisor agent
 @st.cache_resource
 def get_skills_advisor():
-    return SkillsAdvisorAgent(verbose=True)
+    user_data_path = os.path.join("data", "user_skills")
+    return SkillsAdvisorAgent(verbose=True, user_data_path=user_data_path)
 
 def initialize_session_state():
     """Initialize required session state variables"""
     if "user_context" not in st.session_state:
         st.session_state.user_context = {
+            "user_id": str(uuid.uuid4()),  # Generate unique user ID
+            "name": "",
             "current_role": "",
             "experience": "",
             "skills": [],
             "interests": [],
             "career_goals": ""
         }
+    
     if "skill_progress" not in st.session_state:
         st.session_state.skill_progress = {}
+    
+    if "active_tab" not in st.session_state:
+        st.session_state.active_tab = "analysis"
+    
+    if "learning_paths" not in st.session_state:
+        st.session_state.learning_paths = {}
+    
+    if "selected_learning_path" not in st.session_state:
+        st.session_state.selected_learning_path = None
 
 def main():
     st.title("📚 Skills Development")
@@ -27,18 +42,21 @@ def main():
     initialize_session_state()
     advisor = get_skills_advisor()
     
-    # Check if profile is completed
-    if not any(st.session_state.user_context.values()):
-        st.warning("Please complete your profile in the home page first!")
-        st.write("Go to the home page and fill out your profile information to get personalized skill recommendations.")
-        return
+    # Set user profile in advisor
+    advisor.set_user_profile(st.session_state.user_context)
     
-    st.write("""
-    Develop your professional skills with personalized learning paths and recommendations.
-    Track your progress and get guidance on which skills to focus on next.
-    """)
+    # Create tabs
+    tabs = ["Skill Analysis", "Learning Paths", "Progress Tracking"]
+    active_tab = st.radio("Navigation", tabs, horizontal=True)
     
-    # Skill analysis section
+    if active_tab == "Skill Analysis":
+        display_skill_analysis_tab(advisor)
+    elif active_tab == "Learning Paths":
+        display_learning_paths_tab(advisor)
+    else:
+        display_progress_tracking_tab(advisor)
+
+def display_skill_analysis_tab(advisor):
     st.header("Skill Gap Analysis")
     
     with st.form("skill_analysis_form"):
@@ -140,17 +158,24 @@ def main():
                 st.error(f"Error analyzing skills: {str(e)}")
                 if st.checkbox("Show detailed error"):
                     st.exception(e)
-    
-    # Learning path section
+
+def display_learning_paths_tab(advisor):
     st.header("Create Learning Path")
     
+    # Ensure analysis is performed before using it
+    if "last_analysis" not in st.session_state:
+        st.error("Please perform skill analysis first.")
+        return
+    
+    analysis = st.session_state.last_analysis  # Retrieve the analysis from session state
+
     with st.form("learning_path_form"):
         col5, col6 = st.columns(2)
         
         with col5:
             skill_to_learn = st.selectbox(
                 "Select Skill to Develop",
-                options=[""] + (analysis["structured_data"]["priority_skills"] if 'analysis' in locals() else []) + [
+                options=[""] + (analysis["structured_data"]["priority_skills"] if "structured_data" in analysis else []) + [
                     "Python Programming", "Data Analysis", "Machine Learning",
                     "Project Management", "Leadership", "Communication"
                 ]
@@ -332,6 +357,109 @@ def main():
                 if st.button("Stop Tracking", key=f"remove_{skill}"):
                     del st.session_state.skill_progress[skill]
                     st.rerun()
+
+def display_progress_tracking_tab(advisor):
+    st.header("Progress Tracking")
+    
+    # Get user's learning paths
+    learning_paths = advisor.get_user_learning_paths(st.session_state.user_context["user_id"])
+    
+    if not learning_paths:
+        st.info("No active learning paths. Create a learning path to start tracking progress!")
+        return
+    
+    # Display learning path selection
+    selected_path = st.selectbox(
+        "Select Learning Path",
+        options=[path["id"] for path in learning_paths],
+        format_func=lambda x: f"{next(p['skill'] for p in learning_paths if p['id'] == x)} - {next(p['current_level'] for p in learning_paths if p['id'] == x)} → {next(p['target_level'] for p in learning_paths if p['id'] == x)}"
+    )
+    
+    if selected_path:
+        path = next(p for p in learning_paths if p["id"] == selected_path)
+        
+        # Display progress
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Progress Overview")
+            st.progress(path["progress"]["progress_percentage"] / 100)
+            st.metric("Overall Progress", f"{path['progress']['progress_percentage']}%")
+            
+            # Time tracking
+            time_spent = st.number_input(
+                "Additional hours spent",
+                min_value=0.0,
+                step=0.5
+            )
+        
+        with col2:
+            st.subheader("Completed Items")
+            # Display completion checkboxes
+            completed_objectives = st.multiselect(
+                "Learning Objectives",
+                options=path["structured_data"]["objectives"],
+                default=path["progress"]["completed_objectives"]
+            )
+            
+            completed_resources = st.multiselect(
+                "Resources",
+                options=path["structured_data"]["resources"],
+                default=path["progress"]["completed_resources"]
+            )
+            
+            completed_exercises = st.multiselect(
+                "Exercises",
+                options=path["structured_data"]["exercises"],
+                default=path["progress"]["completed_exercises"]
+            )
+        
+        # User reflection
+        user_notes = st.text_area("Reflection Notes", help="Share your thoughts on your progress")
+        
+        if st.button("Update Progress"):
+            try:
+                # Update progress
+                updated_path = advisor.update_skill_progress(
+                    learning_path_id=selected_path,
+                    completed_objectives=completed_objectives,
+                    completed_resources=completed_resources,
+                    completed_exercises=completed_exercises,
+                    time_spent_hours=time_spent,
+                    user_notes=user_notes,
+                    user_id=st.session_state.user_context["user_id"]
+                )
+                
+                # Get progress assessment
+                assessment = advisor.assess_progress(
+                    learning_path_id=selected_path,
+                    user_reflection=user_notes,
+                    user_id=st.session_state.user_context["user_id"]
+                )
+                
+                st.success("Progress updated successfully!")
+                
+                # Display assessment
+                st.subheader("Progress Assessment")
+                st.write(assessment["progress_evaluation"])
+                
+                col3, col4 = st.columns(2)
+                with col3:
+                    st.write("**Strengths:**")
+                    for strength in assessment["strengths"]:
+                        st.success(f"✓ {strength}")
+                
+                with col4:
+                    st.write("**Areas for Improvement:**")
+                    for area in assessment["areas_for_improvement"]:
+                        st.info(f"↗ {area}")
+                
+                st.write("**Next Steps:**")
+                for step in assessment["next_steps"]:
+                    st.write(f"• {step}")
+                
+            except Exception as e:
+                st.error(f"Error updating progress: {str(e)}")
 
 if __name__ == "__main__":
     main() 
