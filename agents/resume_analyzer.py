@@ -5,13 +5,15 @@ import pdfplumber
 from langchain.prompts import PromptTemplate
 from .base_agent import BaseAgent
 from config.config import Config
+import traceback
+from collections import OrderedDict
 
 class ResumeAnalyzerAgent(BaseAgent):
-    def __init__(self, verbose: bool = False):
+    def __init__(self, verbose: bool = False, cache_size: int = 100):
         super().__init__(
             role="Resume Analyzer",
-            goal="Extract and analyze key information from resumes",
-            backstory="Expert in parsing resumes and identifying key skills, experience, and qualifications",
+            goal="Analyze resumes for key information",
+            backstory="I help extract and analyze information from resumes",
             verbose=verbose
         )
         
@@ -108,6 +110,16 @@ class ResumeAnalyzerAgent(BaseAgent):
             }
         }
 
+        # Pre-compile regular expressions for better performance
+        self.skills_pattern = re.compile(r'your_pattern_here', re.IGNORECASE)
+        self.education_pattern = re.compile(r'your_pattern_here', re.IGNORECASE)
+        
+        # Cache for expensive operations
+        self.cache_size = cache_size
+        self._section_pattern_cache = OrderedDict()  # Use OrderedDict for LRU cache
+        self._skill_confidence_cache = OrderedDict()
+
+    # Group 1: File and Text Processing
     def extract_text_from_pdf(self, pdf_path: str) -> str:
         """Extract text content from a PDF resume with better handling"""
         try:
@@ -254,6 +266,7 @@ class ResumeAnalyzerAgent(BaseAgent):
         
         return text.strip()
 
+    # Group 2: Section Processing
     def extract_sections(self, text: str) -> Dict:
         """Enhanced section extraction with better text processing"""
         # Preprocess text first
@@ -319,6 +332,127 @@ class ResumeAnalyzerAgent(BaseAgent):
         
         return sections
 
+    def detect_sections(self, text: str) -> Dict[str, Dict]:
+        """Enhanced section detection with confidence scores and caching"""
+        # Check if we've already processed this text
+        cache_key = hash(text)
+        if cache_key in self._section_pattern_cache:
+            return self._section_pattern_cache[cache_key]
+        
+        sections = {}
+        lines = text.split('\n')
+        current_section = None
+        section_content = []
+        
+        for i, line in enumerate(lines):
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Check for section headers
+            for section, patterns in self.section_patterns.items():
+                # Check header patterns
+                header_match = any(re.match(pattern, line) for pattern in patterns['headers'])
+                # Check indicators
+                indicator_match = any(re.search(pattern, line) for pattern in patterns['indicators'])
+                
+                if header_match or indicator_match:
+                    # Save previous section if exists
+                    if current_section:
+                        sections[current_section] = {
+                            'content': '\n'.join(section_content),
+                            'start_line': section_start,
+                            'end_line': i,
+                            'confidence': self._calculate_section_confidence(
+                                current_section, '\n'.join(section_content)
+                            )
+                        }
+                    
+                    current_section = section
+                    section_content = []
+                    section_start = i
+                    break
+            
+            if current_section:
+                section_content.append(line)
+        
+        # Save last section
+        if current_section and section_content:
+            sections[current_section] = {
+                'content': '\n'.join(section_content),
+                'start_line': section_start,
+                'end_line': len(lines),
+                'confidence': self._calculate_section_confidence(
+                    current_section, '\n'.join(section_content)
+                )
+            }
+        
+        # Cache the result before returning
+        self._section_pattern_cache[cache_key] = sections
+        return sections
+
+    # Group 3: Skills Analysis
+    def _extract_skills_pattern(self, text: str) -> Set[str]:
+        """Extract skills from text using regex patterns with enhanced patterns"""
+        skills = set()
+        
+        # Common technical skills patterns - expanded list
+        tech_patterns = [
+            # Programming languages
+            r'\b(Python|Java|JavaScript|TypeScript|C\+\+|C#|Ruby|PHP|Swift|Kotlin|R|Scala|Go|Rust|Perl|Shell|Bash|PowerShell|SQL|HTML|CSS|XML|JSON|YAML)\b',
+            
+            # Frameworks and libraries
+            r'\b(React|Angular|Vue|Node\.js|Express|Django|Flask|Spring|Laravel|ASP\.NET|Ruby on Rails|TensorFlow|PyTorch|Keras|Scikit-learn|Pandas|NumPy|Matplotlib|Seaborn|Bootstrap|jQuery|D3\.js)\b',
+            
+            # Databases
+            r'\b(MySQL|PostgreSQL|MongoDB|SQLite|Oracle|SQL Server|Redis|Cassandra|DynamoDB|Firebase|Elasticsearch|Neo4j)\b',
+            
+            # Cloud and DevOps
+            r'\b(AWS|Azure|GCP|Docker|Kubernetes|Jenkins|GitLab CI|GitHub Actions|Terraform|Ansible|Puppet|Chef|Prometheus|Grafana|ELK Stack)\b',
+            
+            # Tools and platforms
+            r'\b(Git|SVN|Jira|Confluence|Trello|Slack|Microsoft Office|Google Workspace|Figma|Sketch|Adobe|Photoshop|Illustrator|InDesign|Premiere|After Effects)\b',
+            
+            # Concepts and methodologies
+            r'\b(Agile|Scrum|Kanban|DevOps|CI/CD|TDD|BDD|OOP|Functional Programming|Microservices|RESTful API|GraphQL|SOAP|Machine Learning|Deep Learning|NLP|Computer Vision|Data Science|Big Data|Blockchain)\b',
+            
+            # Soft skills - common in resumes
+            r'\b(Leadership|Communication|Teamwork|Problem Solving|Critical Thinking|Time Management|Project Management|Creativity|Adaptability|Collaboration|Presentation|Negotiation|Conflict Resolution)\b'
+        ]
+        
+        # Extract skills using patterns
+        print("\n--- SKILLS EXTRACTION USING PATTERN MATCHING ---")
+        for pattern in tech_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            if matches:
+                print(f"Pattern matches: {matches}")
+                skills.update([match.lower() for match in matches])
+        
+        # Look for skills in context (e.g., "proficient in X", "experience with Y")
+        context_patterns = [
+            r'(?:proficient|skilled|experienced|expertise|knowledge|familiar)\s+(?:in|with|of)\s+([A-Za-z0-9\+\#\.\s]+?)(?:,|\.|and|;|\n)',
+            r'(?:worked|experience|using)\s+(?:with|in)\s+([A-Za-z0-9\+\#\.\s]+?)(?:,|\.|and|;|\n)',
+            r'(?:knowledge|understanding)\s+of\s+([A-Za-z0-9\+\#\.\s]+?)(?:,|\.|and|;|\n)'
+        ]
+        
+        for pattern in context_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            for match in matches:
+                # Split by common separators and clean up
+                potential_skills = re.split(r',|\sand\s|;|\s+', match)
+                for skill in potential_skills:
+                    skill = skill.strip().lower()
+                    if skill and len(skill) > 2 and skill not in ['and', 'the', 'in', 'with', 'of', 'for', 'to', 'on', 'at']:
+                        skills.add(skill)
+                        print(f"Context pattern match: {skill}")
+        
+        # Print final results
+        print(f"Total skills found: {len(skills)}")
+        print(f"Skills: {skills}")
+        print("-------------------------------------------\n")
+        
+        return skills
+
     def _extract_skills(self, text: str, skills_set: set) -> None:
         """Extract skills from text using pattern matching"""
         text = text.lower()
@@ -333,33 +467,270 @@ class ResumeAnalyzerAgent(BaseAgent):
         
         self._log(f"Current skills set: {skills_set}")
 
-    def analyze_resume(self, text: str) -> Dict[str, Any]:
-        """Combined analysis using both pattern matching and LLM"""
-        try:
-            # Initialize results dictionary
-            results = {
-                "current_role": "",
-                "experience": "",
-                "skills": set(),
-                "education": [],
-                "professional_summary": "",
-                "confidence_scores": {}
-            }
+    def extract_skills_with_context(self, text: str) -> Dict[str, List[Dict]]:
+        """Enhanced skill extraction with context"""
+        skills = {category: [] for category in self.tech_skills_patterns.keys()}
+        
+        # Process text line by line
+        lines = text.split('\n')
+        for i, line in enumerate(lines):
+            # Get context (previous and next lines)
+            context_before = lines[i-1] if i > 0 else ""
+            context_after = lines[i+1] if i < len(lines)-1 else ""
+            
+            for category, skill_list in self.tech_skills_patterns.items():
+                # Check patterns
+                for pattern in skill_list:
+                    matches = re.finditer(pattern, line, re.IGNORECASE)
+                    for match in matches:
+                        skill = match.group(0)
+                        skills[category].append({
+                            'skill': skill,
+                            'context': {
+                                'line': line.strip(),
+                                'before': context_before.strip(),
+                                'after': context_after.strip()
+                            },
+                            'confidence': self._calculate_skill_confidence(skill, line, category)
+                        })
+        
+        return skills
 
-            # Pattern-based analysis
+    def _calculate_skill_confidence(self, skill: str, context: str, category: str) -> float:
+        """Calculate confidence score for a skill with caching and optimization"""
+        # Create a cache key from the input parameters
+        cache_key = (skill, hash(context), category)
+        if hasattr(self, '_skill_confidence_cache') and cache_key in self._skill_confidence_cache:
+            return self._skill_confidence_cache[cache_key]
+        
+        # Base confidence based on skill category
+        confidence = 0.5
+        if category == "technical":
+            confidence = 0.7
+        elif category == "soft":
+            confidence = 0.4
+        
+        # Context indicators (using pre-compiled patterns for efficiency)
+        context_indicators = {
+            'strong': [
+                re.compile(r'proficient\s+in', re.IGNORECASE),
+                re.compile(r'expert\s+in', re.IGNORECASE),
+                # More patterns...
+            ],
+            'medium': [
+                re.compile(r'experience\s+with', re.IGNORECASE),
+                re.compile(r'knowledge\s+of', re.IGNORECASE),
+                # More patterns...
+            ],
+            'weak': [
+                re.compile(r'familiar\s+with', re.IGNORECASE),
+                re.compile(r'basic\s+understanding', re.IGNORECASE),
+                # More patterns...
+            ]
+        }
+        
+        # Check indicators using more efficient pre-compiled patterns
+        for indicator in context_indicators['strong']:
+            if indicator.search(context):
+                confidence += 0.2
+                break
+        
+        for indicator in context_indicators['medium']:
+            if indicator.search(context):
+                confidence += 0.1
+                break
+        
+        for indicator in context_indicators['weak']:
+            if indicator.search(context):
+                confidence -= 0.1
+                break
+        
+        result = min(1.0, max(0.0, confidence))
+        
+        # Cache the result
+        if not hasattr(self, '_skill_confidence_cache'):
+            self._skill_confidence_cache = OrderedDict()
+        self._skill_confidence_cache[cache_key] = result
+        
+        return result
+
+    # Group 4: Education Analysis
+    def _extract_education_pattern(self, text: str) -> List[str]:
+        """Extract education information using pattern matching"""
+        education = []
+        lines = text.split('\n')
+        in_education_section = False
+        
+        education_keywords = [
+            r'bachelor|master|phd|degree|diploma|certification',
+            r'university|college|institute|school',
+            r'graduated|major|minor'
+        ]
+        
+        for line in lines:
+            # Check if we're entering education section
+            if re.search(r'(?i)^education|academic|qualifications?$', line):
+                in_education_section = True
+                continue
+            
+            # Check if we're leaving education section
+            if in_education_section and re.search(r'(?i)^(experience|skills|projects)', line):
+                in_education_section = False
+                continue
+            
+            # Extract education details
+            if in_education_section or any(re.search(pattern, line, re.IGNORECASE) for pattern in education_keywords):
+                if len(line.strip()) > 10:  # Avoid short lines
+                    education.append(line.strip())
+        
+        return education
+
+    # Group 5: Validation Methods
+    def _validate_skills(self, skills: Set[str]) -> Set[str]:
+        """Validate and clean skills"""
+        validated = set()
+        for skill in skills:
+            skill = skill.strip().lower()
+            if (
+                len(skill) > 2 and  # Longer than 2 characters
+                skill not in self.invalid_skills and  # Not in invalid list
+                not skill.isnumeric() and  # Not just numbers
+                not all(c.isdigit() or c.isspace() for c in skill)  # Not just digits and spaces
+            ):
+                validated.add(skill)
+        return validated
+
+    def validate_sections(self, sections: Dict) -> List[str]:
+        """Validate extracted sections and return warnings"""
+        warnings = []
+        
+        # Check for empty or missing sections
+        if not sections['summary'].strip():
+            warnings.append("No professional summary found")
+        
+        if not sections['skills']:
+            warnings.append("No skills were extracted")
+        
+        if not sections['experience']:
+            warnings.append("No work experience entries found")
+        
+        if not sections['education']:
+            warnings.append("No education details found")
+        
+        # Validate content length and quality
+        if len(sections['summary'].split()) < 10:
+            warnings.append("Professional summary seems too short")
+        
+        if len(sections['skills']) < 5:
+            warnings.append("Limited number of skills detected")
+        
+        # Check for potential data quality issues
+        for exp in sections['experience']:
+            if len(exp.split()) < 5:
+                warnings.append(f"Short work experience entry found: '{exp}'")
+        
+        return warnings
+
+    def validate_extracted_text(self, text: str) -> Dict[str, any]:
+        """Enhanced validation with detailed reporting"""
+        validation_report = {
+            "is_valid": True,
+            "warnings": [],
+            "errors": [],
+            "stats": {
+                "total_length": len(text),
+                "word_count": len(text.split()),
+                "line_count": len(text.splitlines()),
+                "special_chars_found": set()
+            }
+        }
+        
+        try:
+            if not text:
+                validation_report["is_valid"] = False
+                validation_report["errors"].append("No text was extracted from the resume")
+                raise ValueError("Empty text content")
+            
+            # Content length checks
+            if len(text.split()) < 50:
+                validation_report["is_valid"] = False
+                validation_report["errors"].append(
+                    f"Text content too short: {len(text.split())} words (minimum 50 required)"
+                )
+            
+            # Section identification check
+            required_sections = ['education', 'experience', 'skills']
+            found_sections = []
+            for section in required_sections:
+                if re.search(self.section_patterns[section]['headers'][0], text, re.I):
+                    found_sections.append(section)
+            
+            missing_sections = set(required_sections) - set(found_sections)
+            if missing_sections:
+                validation_report["warnings"].append(
+                    f"Missing sections: {', '.join(missing_sections)}"
+                )
+            
+            # Check for potential formatting issues
+            if text.count('\n\n\n') > 5:
+                validation_report["warnings"].append(
+                    "Multiple excessive line breaks detected - possible formatting issues"
+                )
+            
+            # Identify special characters
+            special_chars = set(char for char in text if not char.isascii())
+            if special_chars:
+                validation_report["stats"]["special_chars_found"] = special_chars
+                validation_report["warnings"].append(
+                    f"Special characters found: {', '.join(special_chars)}"
+                )
+            
+            return validation_report
+            
+        except Exception as e:
+            validation_report["is_valid"] = False
+            validation_report["errors"].append(str(e))
+            return validation_report
+
+    def analyze_resume(self, text: str) -> Dict[str, Any]:
+        """Analyze resume text and extract structured information"""
+        try:
+            # Get pattern-based analysis results
             pattern_results = self._pattern_based_analysis(text)
             
-            # LLM-based analysis
-            llm_results = self._llm_based_analysis(text)
+            # Only use LLM for current role if pattern matching didn't find it
+            if not pattern_results.get("current_role"):
+                # Use a simplified LLM prompt just for current role
+                current_role = self._extract_current_role_llm(text)
+                if current_role:
+                    pattern_results["current_role"] = current_role
             
-            # Combine results with confidence scoring
-            combined_results = self._combine_analyses(pattern_results, llm_results)
-            
-            return combined_results
+            # Skip full LLM analysis to save costs
+            return pattern_results
         except Exception as e:
-            self._log(f"Error in analyze_resume: {str(e)}")
-            # Return best available results even if partial
-            return self._get_best_available_results(pattern_results, llm_results)
+            self._log(f"Resume analysis error: {str(e)}")
+            return {"error": str(e)}
+
+    def _extract_current_role_llm(self, text: str) -> str:
+        """Extract current role using LLM with a minimal prompt"""
+        try:
+            prompt = f"""
+            From the following resume text, extract ONLY the person's current or most recent job role/title.
+            Return just the role title without any additional text.
+
+            Resume:
+            {text}
+            """
+            
+            response = self._llm_client.generate_text(prompt)
+            # Clean up the response to get just the role
+            role = response.strip()
+            
+            print(f"LLM Extracted Current Role: {role}")
+            return role
+        except Exception as e:
+            self._log(f"LLM current role extraction error: {str(e)}")
+            return ""
 
     def _pattern_based_analysis(self, text: str) -> Dict[str, Any]:
         """Pattern-based analysis with enhanced reliability"""
@@ -371,6 +742,14 @@ class ResumeAnalyzerAgent(BaseAgent):
                 "education": self._extract_education_pattern(text),
                 "confidence": "pattern"
             }
+            
+            # Print the results to the console
+            print("Pattern Matching Results:")
+            print(f"Current Role: {results['current_role']}")
+            print(f"Experience: {results['experience']}")
+            print(f"Skills: {results['skills']}")
+            print(f"Education: {results['education']}")
+            
             return results
         except Exception as e:
             self._log(f"Pattern analysis error: {str(e)}")
@@ -472,20 +851,6 @@ class ResumeAnalyzerAgent(BaseAgent):
 
         return combined
 
-    def _validate_skills(self, skills: Set[str]) -> Set[str]:
-        """Validate and clean skills"""
-        validated = set()
-        for skill in skills:
-            skill = skill.strip().lower()
-            if (
-                len(skill) > 2 and  # Longer than 2 characters
-                skill not in self.invalid_skills and  # Not in invalid list
-                not skill.isnumeric() and  # Not just numbers
-                not all(c.isdigit() or c.isspace() for c in skill)  # Not just digits and spaces
-            ):
-                validated.add(skill)
-        return validated
-
     def _normalize_experience(self, exp: str) -> str:
         """Normalize experience to years"""
         try:
@@ -511,44 +876,113 @@ class ResumeAnalyzerAgent(BaseAgent):
         return combined
 
     def process_resume(self, file_path: str) -> Dict[str, Any]:
-        """Process resume with enhanced error handling and type checking"""
+        """Process a resume file and extract structured information with better error handling"""
         try:
             # Validate file exists
             if not os.path.exists(file_path):
                 return {
-                    "success": False,
-                    "structured_data": {"skills": []},
-                    "errors": ["Resume file not found"]
+                    "error": True,
+                    "message": f"File not found: {file_path}",
+                    "structured_data": {"skills": []}
                 }
             
-            # Extract text from PDF
-            text = self.extract_text_from_pdf(file_path)
+            # Extract text based on file format
+            if file_path.lower().endswith('.pdf'):
+                text = self.extract_text_from_pdf(file_path)
+            elif file_path.lower().endswith(('.docx', '.doc')):
+                return {
+                    "error": True,
+                    "message": f"Unsupported file format: {file_path}",
+                    "structured_data": {"skills": []}
+                }
+            elif file_path.lower().endswith('.txt'):
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    text = f.read()
+            else:
+                return {
+                    "error": True,
+                    "message": f"Unsupported file format: {file_path}",
+                    "structured_data": {"skills": []}
+                }
             
-            # Analyze resume
-            analysis_results = self.analyze_resume(text)
+            # Validate extracted text
+            validation_result = self.validate_extracted_text(text)
+            if validation_result.get("error", False):
+                validation_result["structured_data"] = {"skills": []}
+                return validation_result
             
-            # Ensure skills is a list
-            if isinstance(analysis_results.get("skills"), set):
-                analysis_results["skills"] = list(analysis_results["skills"])
+            # Process the text
+            cleaned_text = self.clean_extracted_text(text)
+            preprocessed_text = self.preprocess_text(cleaned_text)
             
+            # Extract sections
+            sections = self.extract_sections(preprocessed_text)
+            
+            # Extract skills directly from preprocessed text
+            skills_list = list(self._extract_skills_pattern(preprocessed_text))
+            
+            # Add skills from skills section if it exists
+            for section_name, section_data in sections.items():
+                if any(kw in section_name.lower() for kw in ["skill", "technology", "competenc", "proficien"]):
+                    # Make sure we're getting the content string from the section data
+                    section_content = section_data['content'] if isinstance(section_data, dict) and 'content' in section_data else section_data
+                    
+                    # Ensure section_content is a string before passing to _extract_skills_pattern
+                    if isinstance(section_content, str):
+                        additional_skills = self._extract_skills_pattern(section_content)
+                        skills_list.extend(list(additional_skills))
+            
+            # Remove duplicates and validate
+            unique_skills = set(skills_list)
+            validated_skills = self._validate_skills(unique_skills)
+            
+            # Debug output
+            if self.verbose:
+                print(f"Extracted {len(validated_skills)} skills from resume")
+                print(f"Skills: {validated_skills}")
+            
+            # Convert to simple list of dictionaries for the structured data
+            structured_skills = []
+            for skill in validated_skills:
+                structured_skills.append({
+                    "name": skill,
+                    "confidence": 0.8,  # Default high confidence
+                    "category": "technical"  # Default category
+                })
+            
+            # Analyze the resume using our optimized method (pattern-based with minimal LLM)
+            analysis_result = self.analyze_resume(preprocessed_text)
+            
+            # Create the structured data with skills as a simple list
+            structured_data = {
+                "skills": structured_skills,
+                "sections": sections,
+                "education": self._extract_education_pattern(preprocessed_text),
+                "current_role": analysis_result.get("current_role", ""),
+                "experience": analysis_result.get("experience", ""),
+                "professional_summary": analysis_result.get("professional_summary", "")
+            }
+            
+            # Add the structured data to the response
             return {
-                "success": True,
-                "structured_data": {
-                    "skills": analysis_results.get("skills", []),
-                    "current_role": analysis_results.get("current_role", ""),
-                    "experience": analysis_results.get("experience", ""),
-                    "professional_summary": analysis_results.get("professional_summary", "")
-                },
-                "raw_text": text,
-                "warnings": [],
-                "errors": []
+                "error": False,
+                "message": "Resume processed successfully",
+                "text": preprocessed_text,
+                "analysis": analysis_result,
+                "structured_data": structured_data
             }
             
         except Exception as e:
+            import traceback
+            error_msg = f"Error processing resume: {str(e)}"
+            if self.verbose:
+                tb = traceback.format_exc()
+                print(f"Exception traceback: {tb}")
+                error_msg += f"\n{tb}"
             return {
-                "success": False,
-                "structured_data": {"skills": []},
-                "errors": [str(e)]
+                "error": True,
+                "message": error_msg,
+                "structured_data": {"skills": []}
             }
 
     def analyze_sections(self, sections: Dict) -> Dict:
@@ -644,226 +1078,6 @@ class ResumeAnalyzerAgent(BaseAgent):
             self._log(f"Error in LLM analysis: {str(e)}")
             return {}
 
-    def validate_sections(self, sections: Dict) -> List[str]:
-        """Validate extracted sections and return warnings"""
-        warnings = []
-        
-        # Check for empty or missing sections
-        if not sections['summary'].strip():
-            warnings.append("No professional summary found")
-        
-        if not sections['skills']:
-            warnings.append("No skills were extracted")
-        
-        if not sections['experience']:
-            warnings.append("No work experience entries found")
-        
-        if not sections['education']:
-            warnings.append("No education details found")
-        
-        # Validate content length and quality
-        if len(sections['summary'].split()) < 10:
-            warnings.append("Professional summary seems too short")
-        
-        if len(sections['skills']) < 5:
-            warnings.append("Limited number of skills detected")
-        
-        # Check for potential data quality issues
-        for exp in sections['experience']:
-            if len(exp.split()) < 5:
-                warnings.append(f"Short work experience entry found: '{exp}'")
-        
-        return warnings
-
-    def validate_extracted_text(self, text: str) -> Dict[str, any]:
-        """Enhanced validation with detailed reporting"""
-        validation_report = {
-            "is_valid": True,
-            "warnings": [],
-            "errors": [],
-            "stats": {
-                "total_length": len(text),
-                "word_count": len(text.split()),
-                "line_count": len(text.splitlines()),
-                "special_chars_found": set()
-            }
-        }
-        
-        try:
-            if not text:
-                validation_report["is_valid"] = False
-                validation_report["errors"].append("No text was extracted from the resume")
-                raise ValueError("Empty text content")
-            
-            # Content length checks
-            if len(text.split()) < 50:
-                validation_report["is_valid"] = False
-                validation_report["errors"].append(
-                    f"Text content too short: {len(text.split())} words (minimum 50 required)"
-                )
-            
-            # Section identification check
-            required_sections = ['education', 'experience', 'skills']
-            found_sections = []
-            for section in required_sections:
-                if re.search(self.section_patterns[section]['headers'][0], text, re.I):
-                    found_sections.append(section)
-            
-            missing_sections = set(required_sections) - set(found_sections)
-            if missing_sections:
-                validation_report["warnings"].append(
-                    f"Missing sections: {', '.join(missing_sections)}"
-                )
-            
-            # Check for potential formatting issues
-            if text.count('\n\n\n') > 5:
-                validation_report["warnings"].append(
-                    "Multiple excessive line breaks detected - possible formatting issues"
-                )
-            
-            # Identify special characters
-            special_chars = set(char for char in text if not char.isascii())
-            if special_chars:
-                validation_report["stats"]["special_chars_found"] = special_chars
-                validation_report["warnings"].append(
-                    f"Special characters found: {', '.join(special_chars)}"
-                )
-            
-            return validation_report
-            
-        except Exception as e:
-            validation_report["is_valid"] = False
-            validation_report["errors"].append(str(e))
-            return validation_report
-
-    def extract_skills_with_context(self, text: str) -> Dict[str, List[Dict]]:
-        """Enhanced skill extraction with context"""
-        skills = {category: [] for category in self.tech_skills_patterns.keys()}
-        
-        # Process text line by line
-        lines = text.split('\n')
-        for i, line in enumerate(lines):
-            # Get context (previous and next lines)
-            context_before = lines[i-1] if i > 0 else ""
-            context_after = lines[i+1] if i < len(lines)-1 else ""
-            
-            for category, skill_list in self.tech_skills_patterns.items():
-                # Check patterns
-                for pattern in skill_list:
-                    matches = re.finditer(pattern, line, re.IGNORECASE)
-                    for match in matches:
-                        skill = match.group(0)
-                        skills[category].append({
-                            'skill': skill,
-                            'context': {
-                                'line': line.strip(),
-                                'before': context_before.strip(),
-                                'after': context_after.strip()
-                            },
-                            'confidence': self._calculate_skill_confidence(skill, line, category)
-                        })
-        
-        return skills
-
-    def _calculate_skill_confidence(self, skill: str, context: str, category: str) -> float:
-        """Calculate confidence score for extracted skill"""
-        confidence = 0.5  # Base confidence
-        
-        # Check if skill is in our known keywords
-        if skill.lower() in [k.lower() for k in self.tech_skills_patterns[category]]:
-            confidence += 0.3
-        
-        # Check context indicators
-        context_indicators = {
-            'strong': [
-                r'proficient in',
-                r'expert in',
-                r'experience with',
-                r'skilled in',
-                r'specialized in'
-            ],
-            'medium': [
-                r'worked with',
-                r'used',
-                r'familiar with',
-                r'knowledge of'
-            ],
-            'weak': [
-                r'basic',
-                r'learning',
-                r'exposure to'
-            ]
-        }
-        
-        for indicator in context_indicators['strong']:
-            if re.search(indicator + r'\s+' + re.escape(skill), context, re.IGNORECASE):
-                confidence += 0.2
-                break
-        
-        for indicator in context_indicators['medium']:
-            if re.search(indicator + r'\s+' + re.escape(skill), context, re.IGNORECASE):
-                confidence += 0.1
-                break
-        
-        for indicator in context_indicators['weak']:
-            if re.search(indicator + r'\s+' + re.escape(skill), context, re.IGNORECASE):
-                confidence -= 0.1
-                break
-        
-        return min(1.0, max(0.0, confidence))
-
-    def detect_sections(self, text: str) -> Dict[str, Dict]:
-        """Enhanced section detection with confidence scores"""
-        sections = {}
-        lines = text.split('\n')
-        current_section = None
-        section_content = []
-        
-        for i, line in enumerate(lines):
-            line = line.strip()
-            if not line:
-                continue
-            
-            # Check for section headers
-            for section, patterns in self.section_patterns.items():
-                # Check header patterns
-                header_match = any(re.match(pattern, line) for pattern in patterns['headers'])
-                # Check indicators
-                indicator_match = any(re.search(pattern, line) for pattern in patterns['indicators'])
-                
-                if header_match or indicator_match:
-                    # Save previous section if exists
-                    if current_section:
-                        sections[current_section] = {
-                            'content': '\n'.join(section_content),
-                            'start_line': section_start,
-                            'end_line': i,
-                            'confidence': self._calculate_section_confidence(
-                                current_section, '\n'.join(section_content)
-                            )
-                        }
-                    
-                    current_section = section
-                    section_content = []
-                    section_start = i
-                    break
-            
-            if current_section:
-                section_content.append(line)
-        
-        # Save last section
-        if current_section and section_content:
-            sections[current_section] = {
-                'content': '\n'.join(section_content),
-                'start_line': section_start,
-                'end_line': len(lines),
-                'confidence': self._calculate_section_confidence(
-                    current_section, '\n'.join(section_content)
-                )
-            }
-        
-        return sections
-
     def _calculate_section_confidence(self, section: str, content: str) -> float:
         """Calculate confidence score for section detection"""
         confidence = 0.5  # Base confidence
@@ -877,64 +1091,6 @@ class ResumeAnalyzerAgent(BaseAgent):
         words = len(content.split())
         if words > 50:
             confidence += 0.2
-
-    def _extract_skills_pattern(self, text: str) -> Set[str]:
-        """Extract skills using pattern matching"""
-        skills = set()
-        text = text.lower()
-        
-        # Extract from tech skills patterns
-        for category, patterns in self.tech_skills_patterns.items():
-            for pattern in patterns:
-                matches = re.finditer(pattern, text, re.IGNORECASE)
-                for match in matches:
-                    skill = match.group(0).strip()
-                    if (
-                        len(skill) > 2 and 
-                        skill not in self.invalid_skills and
-                        not skill.isnumeric()
-                    ):
-                        skills.add(skill)
-        
-        # Extract soft skills
-        for pattern in self.soft_skills_patterns:
-            matches = re.finditer(pattern, text, re.IGNORECASE)
-            for match in matches:
-                skill = match.group(0).strip()
-                if len(skill) > 2:
-                    skills.add(f"soft:{skill}")
-        
-        return skills
-
-    def _extract_education_pattern(self, text: str) -> List[str]:
-        """Extract education information using pattern matching"""
-        education = []
-        lines = text.split('\n')
-        in_education_section = False
-        
-        education_keywords = [
-            r'bachelor|master|phd|degree|diploma|certification',
-            r'university|college|institute|school',
-            r'graduated|major|minor'
-        ]
-        
-        for line in lines:
-            # Check if we're entering education section
-            if re.search(r'(?i)^education|academic|qualifications?$', line):
-                in_education_section = True
-                continue
-            
-            # Check if we're leaving education section
-            if in_education_section and re.search(r'(?i)^(experience|skills|projects)', line):
-                in_education_section = False
-                continue
-            
-            # Extract education details
-            if in_education_section or any(re.search(pattern, line, re.IGNORECASE) for pattern in education_keywords):
-                if len(line.strip()) > 10:  # Avoid short lines
-                    education.append(line.strip())
-        
-        return education
 
     def _parse_llm_response(self, response: str) -> Dict[str, Any]:
         """Parse structured response from LLM"""
@@ -974,3 +1130,55 @@ class ResumeAnalyzerAgent(BaseAgent):
                 parsed["professional_summary"] += " " + line
         
         return parsed
+
+    def _manage_cache_size(self, cache_dict):
+        """Keep cache size under control"""
+        while len(cache_dict) > self.cache_size:
+            cache_dict.popitem(last=False)  # Remove oldest item (LRU)
+
+    def _extract_current_role(self, text: str) -> str:
+        """Extract the current role from resume text"""
+        # Common patterns for current role
+        patterns = [
+            r'(?:currently|presently|now)\s+(?:working\s+as|employed\s+as|serving\s+as)\s+(?:an?\s+)?([^,.\n]+)',
+            r'([^,\n]*?(?:engineer|developer|analyst|manager|designer|consultant|specialist|director|lead|architect))[^,\n]*?\s+(?:at\s+[^,\n]+)?\s*(?:\(|\s)?(?:\d{4}|present)',
+            r'^([^,\n]*?)(?:\sat\s|\sin\s|\s-\s)([^,\n]*?)(?:present|current|now)'
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+        
+        # If no match found, try to find the most recent job title
+        lines = text.split('\n')
+        for line in lines:
+            if re.search(r'\b\d{4}\s*-\s*(?:present|current|now)\b', line, re.IGNORECASE):
+                # Extract the job title from this line
+                title_match = re.search(r'^([^,\n]*?)(?:\sat\s|\sin\s|\s-\s)', line, re.IGNORECASE)
+                if title_match:
+                    return title_match.group(1).strip()
+        
+        return ""
+
+    def _extract_experience(self, text: str) -> str:
+        """Extract years of experience from resume text"""
+        # Common patterns for years of experience
+        patterns = [
+            r'(\d+)\+?\s*(?:years?|yrs?)(?:\s+of)?\s+(?:of\s+)?(?:work\s+)?experience',
+            r'(?:experience|working)\s+since\s+(\d{4})',
+            r'(\d+)\+?\s*(?:years?|yrs?)\s+(?:in|at|with)'
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                if pattern.endswith('(\d{4})'):
+                    # Calculate years from year mentioned
+                    import datetime
+                    years = datetime.datetime.now().year - int(match.group(1))
+                    return str(years)
+                else:
+                    return match.group(1)
+        
+        return ""

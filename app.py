@@ -151,7 +151,12 @@ def main():
                             with st.expander("View Extracted Information"):
                                 st.write("**Extracted Skills:**")
                                 for skill in extracted_skills:
-                                    st.write(f"• {skill}")
+                                    skill_name = skill['name']
+                                    skill_confidence = skill['confidence']
+                                    skill_category = skill['category']
+                                    
+                                    # Now use these variables to display the skill information
+                                    st.write(f"• {skill_name} ({skill_category}, confidence: {skill_confidence})")
                                 if extracted_experience:
                                     st.write("**Extracted Experience:**")
                                     st.write(extracted_experience)
@@ -178,8 +183,9 @@ def main():
                             use_extracted = st.checkbox("Use skills extracted from resume")
                         
                         if use_extracted:
-                            skills = ", ".join(extracted_skills)
-                            st.text_area("Skills (comma-separated)", value=skills, disabled=True)
+                            skills_text = ", ".join([skill['name'] for skill in extracted_skills])
+                            skills = skills_text  # Assign to skills variable
+                            st.text_area("Skills (comma-separated)", value=skills_text, disabled=True)
                         else:
                             skills = st.text_area(
                                 "Skills (comma-separated)",

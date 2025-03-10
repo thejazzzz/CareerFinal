@@ -576,6 +576,33 @@ def main():
                                 - Consider PhD programs for research interests
                                 - Look into industry research positions
                                 """)
+                    
+                    # Inside the main() function where skills are displayed
+                    if "structured_data" in analysis and "skills" in analysis["structured_data"]:
+                        skills = analysis["structured_data"]["skills"]
+                        if skills:
+                            st.subheader("📊 Extracted Skills:")
+                            # Display skills in a grid
+                            cols = st.columns(3)
+                            for i, skill in enumerate(skills):
+                                with cols[i % 3]:
+                                    confidence = skill.get("confidence", 0.7) 
+                                    confidence_color = "#5FD068" if confidence > 0.7 else "#FFD24C" if confidence > 0.4 else "#F87474"
+                                    st.markdown(
+                                        f"""<div style="background-color: {confidence_color}20; 
+                                        padding: 10px; border-radius: 5px; margin: 5px 0px;
+                                        border-left: 5px solid {confidence_color}">
+                                        <strong>{skill.get('name', '')}</strong>
+                                        <div style="font-size: 0.8em; opacity: 0.8;">
+                                        {skill.get('category', 'technical')}
+                                        </div>
+                                        </div>""", 
+                                        unsafe_allow_html=True
+                                    )
+                        else:
+                            st.info("No skills were extracted from the resume. Consider adding a dedicated skills section to your resume.")
+                    else:
+                        st.info("No skills data found in the analysis.")
                 else:
                     st.error("❌ Resume analysis failed. Please check the errors below.")
                     for error in analysis.get("errors", []):
