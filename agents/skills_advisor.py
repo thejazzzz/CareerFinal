@@ -4,6 +4,7 @@ from langchain.prompts import PromptTemplate
 import os
 import datetime
 import json
+import re
 
 class SkillsAdvisorAgent(BaseAgent):
     def __init__(self, verbose: bool = False, user_data_path: str = None):
@@ -143,23 +144,53 @@ class SkillsAdvisorAgent(BaseAgent):
             # Debug log
             self._log(f"Creating learning path for {skill} (from {current_level} to {target_level})")
             
+            # Validate inputs
+            if not skill or not isinstance(skill, str):
+                raise ValueError(f"Invalid skill: {skill}. Must be a non-empty string.")
+            
+            valid_levels = ["beginner", "intermediate", "advanced", "expert", "proficient"]
+            if current_level not in valid_levels:
+                self._log(f"Warning: Invalid current_level: {current_level}. Using 'beginner' instead.")
+                current_level = "beginner"
+            
+            if target_level not in valid_levels:
+                self._log(f"Warning: Invalid target_level: {target_level}. Using 'proficient' instead.")
+                target_level = "proficient"
+            
             # Get learning path from LLM
-            response = self.llm.invoke(
-                self.learning_path_prompt.format(
-                    skill=skill,
-                    current_level=current_level,
-                    target_level=target_level
-                )
-            ).content
+            prompt = self.learning_path_prompt.format(
+                skill=skill,
+                current_level=current_level,
+                target_level=target_level
+            )
+            
+            self._log(f"Sending prompt to LLM: {prompt}")
+            
+            response = self.llm.invoke(prompt).content
             
             # Debug log
-            self._log(f"Raw LLM response: {response}")
+            self._log(f"Received raw LLM response of length: {len(response)}")
             
             # Parse and structure the response
             structured_data = self._parse_learning_path(response)
             
+            # Validate structured data
+            for section, items in structured_data.items():
+                if not items or not isinstance(items, list):
+                    self._log(f"Warning: Section '{section}' is empty or invalid. Using defaults.")
+                    if section == "objectives":
+                        structured_data[section] = ["Master fundamental concepts", "Build practical skills", "Complete real-world projects"]
+                    elif section == "resources":
+                        structured_data[section] = ["Online courses", "Practice exercises", "Documentation"]
+                    elif section == "timeline":
+                        structured_data[section] = ["Week 1-2: Basics", "Week 3-4: Advanced concepts", "Week 5-6: Projects"]
+                    elif section == "exercises":
+                        structured_data[section] = ["Basic exercises", "Intermediate challenges", "Advanced projects"]
+                    elif section == "assessment":
+                        structured_data[section] = ["Knowledge tests", "Project evaluation", "Practical application"]
+            
             # Debug log
-            self._log(f"Parsed structured data: {structured_data}")
+            self._log(f"Parsed structured data with {sum(len(items) for items in structured_data.values())} total items")
             
             # Create learning path object with progress tracking
             timestamp = datetime.datetime.now()
@@ -191,12 +222,30 @@ class SkillsAdvisorAgent(BaseAgent):
             if user_id:
                 self._save_learning_path(user_id, learning_path)
             
+            self._log(f"Successfully created learning path for {skill}")
             return learning_path
             
         except Exception as e:
             error_msg = self._format_error(e)
             self._log(f"Error creating learning path: {error_msg}")
-            raise ValueError(f"Failed to create learning path: {error_msg}")
+            
+            # Return a minimal valid response structure even in case of error
+            timestamp = datetime.datetime.now()
+            return {
+                "id": f"error_{timestamp.strftime('%Y%m%d%H%M%S')}",
+                "skill": skill,
+                "current_level": current_level,
+                "target_level": target_level,
+                "created_at": timestamp.isoformat(),
+                "error": str(e),
+                "structured_data": {
+                    "objectives": ["Master fundamental concepts", "Build practical skills", "Complete real-world projects"],
+                    "resources": ["Online courses", "Practice exercises", "Documentation"],
+                    "timeline": ["Week 1-2: Basics", "Week 3-4: Advanced concepts", "Week 5-6: Projects"],
+                    "exercises": ["Basic exercises", "Intermediate challenges", "Advanced projects"],
+                    "assessment": ["Knowledge tests", "Project evaluation", "Practical application"]
+                }
+            }
     
     def _parse_skills_analysis(self, response: str) -> Dict:
         """Parse the skills analysis response"""
@@ -249,8 +298,10 @@ class SkillsAdvisorAgent(BaseAgent):
             return parsed_data
     
     def _parse_learning_path(self, response: str) -> Dict:
-        """Parse the learning path response"""
-        sections = response.split("\n\n")
+        """Parse the learning path response with improved section detection and error handling"""
+        # Debug log
+        self._log(f"Parsing learning path response of length: {len(response)}")
+        
         parsed_data = {
             "objectives": [],
             "resources": [],
@@ -259,47 +310,86 @@ class SkillsAdvisorAgent(BaseAgent):
             "assessment": []
         }
         
+        # Track which sections were found for debugging
+        found_sections = []
+        
+        # First attempt: Try to parse by section headers
         current_section = None
         for line in response.split("\n"):
             line = line.strip()
             if not line:
                 continue
             
-            # Check for section headers
-            if "1. Learning Objectives" in line or "Learning Objectives:" in line:
+            # Check for section headers with more variations
+            if any(header in line.lower() for header in ["learning objectives", "objectives:", "1. learning objectives"]):
                 current_section = "objectives"
+                found_sections.append("objectives")
                 continue
-            elif "2. Recommended Resources" in line or "Recommended Resources:" in line:
+            elif any(header in line.lower() for header in ["recommended resources", "resources:", "2. recommended resources"]):
                 current_section = "resources"
+                found_sections.append("resources")
                 continue
-            elif "3. Timeline and Milestones" in line or "Timeline:" in line:
+            elif any(header in line.lower() for header in ["timeline", "milestones", "3. timeline", "timeline and milestones"]):
                 current_section = "timeline"
+                found_sections.append("timeline")
                 continue
-            elif "4. Practice Exercises" in line or "Practice Exercises:" in line:
+            elif any(header in line.lower() for header in ["practice exercises", "exercises:", "4. practice exercises"]):
                 current_section = "exercises"
+                found_sections.append("exercises")
                 continue
-            elif "5. Assessment Criteria" in line or "Assessment:" in line:
+            elif any(header in line.lower() for header in ["assessment criteria", "assessment:", "5. assessment"]):
                 current_section = "assessment"
+                found_sections.append("assessment")
                 continue
             
             # Process line based on current section
             if current_section and line:
                 # Remove numbering and bullet points
-                cleaned_line = line.lstrip("0123456789.- *•►").strip()
+                cleaned_line = re.sub(r'^[\d\.\-\*•►\s]+', '', line).strip()
                 if cleaned_line:
                     parsed_data[current_section].append(cleaned_line)
         
+        # Debug log
+        self._log(f"Found sections in first pass: {found_sections}")
+        
+        # Second attempt: If sections are missing, try to parse by numbered sections
+        if len(found_sections) < 5:
+            self._log("First pass incomplete, trying second parsing method")
+            sections = re.split(r'\n\s*\d+\.|\n\s*[A-Za-z]+:', response)
+            if len(sections) > 1:
+                # First element is usually empty or introduction
+                sections = sections[1:]
+                
+                # Map sections to our structure if we have enough
+                if len(sections) >= 5:
+                    section_mapping = ["objectives", "resources", "timeline", "exercises", "assessment"]
+                    for i, section_content in enumerate(sections[:5]):
+                        section_name = section_mapping[i]
+                        lines = [line.strip() for line in section_content.split('\n') if line.strip()]
+                        cleaned_lines = [re.sub(r'^[\d\.\-\*•►\s]+', '', line).strip() for line in lines]
+                        parsed_data[section_name] = [line for line in cleaned_lines if line]
+                        if parsed_data[section_name]:
+                            found_sections.append(section_name)
+        
+        # Debug log
+        self._log(f"Found sections after second pass: {found_sections}")
+        self._log(f"Parsed data counts: objectives={len(parsed_data['objectives'])}, resources={len(parsed_data['resources'])}, timeline={len(parsed_data['timeline'])}, exercises={len(parsed_data['exercises'])}, assessment={len(parsed_data['assessment'])}")
+        
         # Add default items if sections are empty
-        if not parsed_data["objectives"]:
-            parsed_data["objectives"] = ["Master fundamental concepts", "Build practical skills", "Complete real-world projects"]
-        if not parsed_data["resources"]:
-            parsed_data["resources"] = ["Online courses", "Practice exercises", "Documentation"]
-        if not parsed_data["timeline"]:
-            parsed_data["timeline"] = ["Week 1-2: Basics", "Week 3-4: Advanced concepts", "Week 5-6: Projects"]
-        if not parsed_data["exercises"]:
-            parsed_data["exercises"] = ["Basic exercises", "Intermediate challenges", "Advanced projects"]
-        if not parsed_data["assessment"]:
-            parsed_data["assessment"] = ["Knowledge tests", "Project evaluation", "Practical application"]
+        for section in parsed_data:
+            if not parsed_data[section]:
+                if section == "objectives":
+                    parsed_data[section] = ["Master fundamental concepts", "Build practical skills", "Complete real-world projects"]
+                elif section == "resources":
+                    parsed_data[section] = ["Online courses", "Practice exercises", "Documentation"]
+                elif section == "timeline":
+                    parsed_data[section] = ["Week 1-2: Basics", "Week 3-4: Advanced concepts", "Week 5-6: Projects"]
+                elif section == "exercises":
+                    parsed_data[section] = ["Basic exercises", "Intermediate challenges", "Advanced projects"]
+                elif section == "assessment":
+                    parsed_data[section] = ["Knowledge tests", "Project evaluation", "Practical application"]
+                
+                self._log(f"Added default items for empty section: {section}")
         
         return parsed_data
     
@@ -326,8 +416,81 @@ class SkillsAdvisorAgent(BaseAgent):
         user_notes: str = None,
         user_id: Optional[str] = None
     ) -> Dict:
-        """Update progress for a specific learning path"""
-        # Implementation for updating progress
+        """Update progress for a learning path"""
+        try:
+            # Check if the learning path exists
+            if learning_path_id not in self.learning_paths:
+                if user_id:
+                    # Try to load learning paths first
+                    self._load_learning_paths(user_id)
+                    if learning_path_id not in self.learning_paths:
+                        raise ValueError(f"Learning path {learning_path_id} not found")
+                else:
+                    raise ValueError(f"Learning path {learning_path_id} not found")
+            
+            # Get the learning path
+            learning_path = self.learning_paths[learning_path_id]
+            
+            # Update completed items
+            if completed_objectives is not None:
+                learning_path["progress"]["completed_objectives"] = completed_objectives
+            
+            if completed_resources is not None:
+                learning_path["progress"]["completed_resources"] = completed_resources
+            
+            if completed_exercises is not None:
+                learning_path["progress"]["completed_exercises"] = completed_exercises
+            
+            # Update time spent
+            if time_spent_hours > 0:
+                learning_path["progress"]["time_spent_hours"] += time_spent_hours
+            
+            # Add user notes if provided
+            if user_notes:
+                timestamp = datetime.datetime.now().isoformat()
+                if "notes" not in learning_path["progress"]:
+                    learning_path["progress"]["notes"] = []
+                
+                learning_path["progress"]["notes"].append({
+                    "timestamp": timestamp,
+                    "content": user_notes
+                })
+            
+            # Calculate progress percentage
+            total_items = (
+                len(learning_path["structured_data"]["objectives"]) +
+                len(learning_path["structured_data"]["resources"]) +
+                len(learning_path["structured_data"]["exercises"])
+            )
+            
+            completed_items = (
+                len(learning_path["progress"]["completed_objectives"]) +
+                len(learning_path["progress"]["completed_resources"]) +
+                len(learning_path["progress"]["completed_exercises"])
+            )
+            
+            if total_items > 0:
+                progress_percentage = (completed_items / total_items) * 100
+            else:
+                progress_percentage = 0
+            
+            # Update progress percentage and last updated timestamp
+            learning_path["progress"]["progress_percentage"] = progress_percentage
+            learning_path["progress"]["last_updated"] = datetime.datetime.now().isoformat()
+            
+            # Save the updated learning path
+            if user_id:
+                self._save_learning_path(user_id, learning_path)
+            
+            # Debug log
+            self._log(f"Updated progress for learning path {learning_path_id} to {progress_percentage:.1f}%")
+            
+            return learning_path
+            
+        except Exception as e:
+            error_msg = str(e)
+            self._log(f"Error updating skill progress: {error_msg}")
+            raise ValueError(f"Failed to update skill progress: {error_msg}")
     
     def assess_progress(
         self,
@@ -335,24 +498,204 @@ class SkillsAdvisorAgent(BaseAgent):
         user_reflection: str = "",
         user_id: Optional[str] = None
     ) -> Dict:
-        """Assess progress on a learning path and provide recommendations"""
-        # Implementation for progress assessment
+        """Assess progress and provide feedback for a learning path"""
+        try:
+            # Check if the learning path exists
+            if learning_path_id not in self.learning_paths:
+                if user_id:
+                    # Try to load learning paths first
+                    self._load_learning_paths(user_id)
+                    if learning_path_id not in self.learning_paths:
+                        raise ValueError(f"Learning path {learning_path_id} not found")
+                else:
+                    raise ValueError(f"Learning path {learning_path_id} not found")
+            
+            # Get the learning path
+            learning_path = self.learning_paths[learning_path_id]
+            
+            # Calculate progress metrics
+            progress = learning_path["progress"]
+            structured_data = learning_path["structured_data"]
+            
+            # Calculate completion percentages for each section
+            objectives_completion = len(progress["completed_objectives"]) / len(structured_data["objectives"]) if structured_data["objectives"] else 0
+            resources_completion = len(progress["completed_resources"]) / len(structured_data["resources"]) if structured_data["resources"] else 0
+            exercises_completion = len(progress["completed_exercises"]) / len(structured_data["exercises"]) if structured_data["exercises"] else 0
+            
+            # Generate feedback based on progress
+            feedback = {
+                "overall_progress": progress["progress_percentage"],
+                "objectives_completion": objectives_completion * 100,
+                "resources_completion": resources_completion * 100,
+                "exercises_completion": exercises_completion * 100,
+                "time_spent_hours": progress["time_spent_hours"],
+                "feedback": [],
+                "next_steps": [],
+                "assessment_date": datetime.datetime.now().isoformat()
+            }
+            
+            # Generate feedback messages
+            if progress["progress_percentage"] < 25:
+                feedback["feedback"].append("You're just getting started. Keep up the momentum!")
+                feedback["next_steps"].append("Focus on completing the foundational objectives first.")
+            elif progress["progress_percentage"] < 50:
+                feedback["feedback"].append("You're making steady progress. Keep going!")
+                feedback["next_steps"].append("Consider spending more time on practical exercises.")
+            elif progress["progress_percentage"] < 75:
+                feedback["feedback"].append("You're well on your way to mastering this skill!")
+                feedback["next_steps"].append("Start applying your knowledge to real-world projects.")
+            else:
+                feedback["feedback"].append("Excellent progress! You're almost there.")
+                feedback["next_steps"].append("Focus on the remaining advanced topics to complete your learning path.")
+            
+            # Add section-specific feedback
+            if objectives_completion < resources_completion and objectives_completion < exercises_completion:
+                feedback["feedback"].append("You've been exploring resources and exercises, but make sure to complete the core learning objectives.")
+            elif resources_completion < objectives_completion and resources_completion < exercises_completion:
+                feedback["feedback"].append("You're making good progress on objectives, but consider exploring more of the recommended resources.")
+            elif exercises_completion < objectives_completion and exercises_completion < resources_completion:
+                feedback["feedback"].append("You've been studying the material, but need more practice with the exercises to solidify your skills.")
+            
+            # Add time-based feedback
+            if progress["time_spent_hours"] < 5:
+                feedback["feedback"].append("Consider dedicating more time to this skill to accelerate your progress.")
+            elif progress["time_spent_hours"] > 20 and progress["progress_percentage"] < 50:
+                feedback["feedback"].append("You've spent significant time on this skill. Consider reviewing your learning approach for more efficiency.")
+            
+            # Add user reflection to the learning path if provided
+            if user_reflection:
+                timestamp = datetime.datetime.now().isoformat()
+                if "reflections" not in learning_path:
+                    learning_path["reflections"] = []
+                
+                learning_path["reflections"].append({
+                    "timestamp": timestamp,
+                    "content": user_reflection,
+                    "progress_at_reflection": progress["progress_percentage"]
+                })
+                
+                # Save the updated learning path
+                if user_id:
+                    self._save_learning_path(user_id, learning_path)
+            
+            # Debug log
+            self._log(f"Assessed progress for learning path {learning_path_id}")
+            
+            return feedback
+            
+        except Exception as e:
+            error_msg = str(e)
+            self._log(f"Error assessing progress: {error_msg}")
+            raise ValueError(f"Failed to assess progress: {error_msg}")
     
     def get_user_learning_paths(self, user_id: str) -> List[Dict]:
         """Get all learning paths for a user"""
-        # Implementation for retrieving learning paths 
+        try:
+            # First, try to load learning paths from disk if not already loaded
+            if not self.learning_paths:
+                self._load_learning_paths(user_id)
+            
+            # Return the learning paths as a list
+            paths = list(self.learning_paths.values())
+            
+            # Debug log
+            self._log(f"Retrieved {len(paths)} learning paths for user {user_id}")
+            
+            return paths
+        except Exception as e:
+            self._log(f"Error retrieving learning paths: {str(e)}")
+            return []
     
     def _save_user_data(self, user_id: str, data_type: str, data: Dict) -> None:
         """Save user data to disk"""
-        # Implementation for saving data
+        try:
+            # Create the user directory path
+            user_dir = os.path.join(self.user_data_path, user_id)
+            
+            # Create directory if it doesn't exist
+            os.makedirs(user_dir, exist_ok=True)
+            
+            # Create the file path
+            file_path = os.path.join(user_dir, f"{data_type}.json")
+            
+            # Save the data to disk
+            with open(file_path, 'w') as f:
+                json.dump(data, f, indent=2)
+            
+            # Debug log
+            self._log(f"Saved {data_type} data for user {user_id}")
+            
+        except Exception as e:
+            self._log(f"Error saving {data_type} data: {str(e)}")
+            raise
     
     def _save_learning_path(self, user_id: str, learning_path: Dict) -> None:
         """Save a learning path to disk"""
-        # Implementation for saving learning paths
+        try:
+            # Create the user directory path
+            user_dir = os.path.join(self.user_data_path, user_id)
+            learning_paths_dir = os.path.join(user_dir, "learning_paths")
+            
+            # Create directories if they don't exist
+            os.makedirs(learning_paths_dir, exist_ok=True)
+            
+            # Ensure the learning path has an ID
+            if "id" not in learning_path:
+                timestamp = datetime.datetime.now()
+                learning_path["id"] = f"{learning_path.get('skill', 'unknown')}_{timestamp.strftime('%Y%m%d%H%M%S')}"
+            
+            # Create the file path
+            file_path = os.path.join(learning_paths_dir, f"{learning_path['id']}.json")
+            
+            # Save the learning path to disk
+            with open(file_path, 'w') as f:
+                json.dump(learning_path, f, indent=2)
+            
+            # Debug log
+            self._log(f"Saved learning path {learning_path['id']} for user {user_id}")
+            
+        except Exception as e:
+            self._log(f"Error saving learning path: {str(e)}")
+            raise
     
     def _load_learning_paths(self, user_id: str) -> None:
         """Load all learning paths for a user"""
-        # Implementation for loading learning paths
+        try:
+            # Create the user directory path
+            user_dir = os.path.join(self.user_data_path, user_id)
+            learning_paths_dir = os.path.join(user_dir, "learning_paths")
+            
+            # Check if the directory exists
+            if not os.path.exists(learning_paths_dir):
+                os.makedirs(learning_paths_dir, exist_ok=True)
+                self._log(f"Created learning paths directory for user {user_id}")
+                return
+            
+            # Load all learning path files
+            path_files = [f for f in os.listdir(learning_paths_dir) if f.endswith('.json')]
+            
+            # Debug log
+            self._log(f"Found {len(path_files)} learning path files for user {user_id}")
+            
+            # Load each file
+            for file_name in path_files:
+                try:
+                    file_path = os.path.join(learning_paths_dir, file_name)
+                    with open(file_path, 'r') as f:
+                        learning_path = json.load(f)
+                        
+                    # Add to the learning paths dictionary
+                    if "id" in learning_path:
+                        self.learning_paths[learning_path["id"]] = learning_path
+                except Exception as e:
+                    self._log(f"Error loading learning path file {file_name}: {str(e)}")
+            
+            self._log(f"Successfully loaded {len(self.learning_paths)} learning paths for user {user_id}")
+            
+        except Exception as e:
+            self._log(f"Error loading learning paths: {str(e)}")
+            # Initialize empty if loading fails
+            self.learning_paths = {}
     
     def _format_list_with_progress(self, items: List[str], completed_items: List[str]) -> str:
         """Format a list of items with completion status"""
