@@ -5,12 +5,24 @@ from datetime import datetime
 
 class ProfileDashboard:
     def __init__(self, user_context: Dict[str, Any]):
+        """Initialize the profile dashboard with user context"""
+        self.required_fields = [
+            'user_role', 'experience', 'skills',
+            'interests', 'career_goals'
+        ]
         self.user_context = user_context
+        self.completion_percentage = self._calculate_completion_percentage()
         
+    def _calculate_completion_percentage(self) -> float:
+        """Calculate the profile completion percentage"""
+        filled_fields = sum(1 for field in self.required_fields 
+                          if self.user_context.get(field) not in [None, "", [], {}])
+        return (filled_fields / len(self.required_fields)) * 100
+    
     def calculate_profile_completion(self) -> float:
         """Calculate profile completion percentage"""
         required_fields = [
-            'current_role', 'experience', 'skills',
+            'user_role', 'experience', 'skills',
             'career_goals', 'education'
         ]
         optional_fields = ['interests', 'certifications', 'achievements']
@@ -164,7 +176,7 @@ class ProfileDashboard:
             st.subheader("Quick Stats")
             st.metric(
                 "Current Role",
-                self.user_context.get('current_role', 'Not specified')
+                self.user_context.get('user_role', 'Not specified')
             )
             st.metric(
                 "Experience",

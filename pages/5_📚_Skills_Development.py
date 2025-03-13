@@ -3,6 +3,7 @@ from agents.skills_advisor import SkillsAdvisorAgent
 from datetime import datetime
 import os
 import uuid
+import json
 
 # Initialize the skills advisor agent
 @st.cache_resource
@@ -34,6 +35,9 @@ def initialize_session_state():
     
     if "selected_learning_path" not in st.session_state:
         st.session_state.selected_learning_path = None
+        
+    if "skill_analysis_results" not in st.session_state:
+        st.session_state.skill_analysis_results = None
 
 def main():
     st.title("📚 Skills Development")
@@ -74,7 +78,9 @@ def display_skill_analysis_tab(advisor):
             
             target_role = st.text_input(
                 "Target Role",
-                value=st.session_state.user_context.get("career_goals", "").split("\n")[0] if st.session_state.user_context.get("career_goals") else ""
+                value=st.session_state.user_context.get("target_role", "") or 
+                      (st.session_state.user_context.get("career_goals", "").split("\n")[0] 
+                       if st.session_state.user_context.get("career_goals") else "")
             )
         
         with col2:
@@ -100,8 +106,12 @@ def display_skill_analysis_tab(advisor):
                 analysis = advisor.analyze_skill_gaps(
                     current_skills=current_skills,
                     target_role=target_role,
-                    job_requirements=requirements_list
+                    job_requirements=requirements_list,
+                    user_id=st.session_state.user_context.get("user_id")
                 )
+                
+                # Store analysis in session state for use in learning paths tab
+                st.session_state.skill_analysis_results = analysis
                 
                 # Display results
                 if "structured_data" in analysis:
@@ -150,6 +160,11 @@ def display_skill_analysis_tab(advisor):
                     
                     # Add a separator before the learning path section
                     st.markdown("---")
+                    
+                    # Add a button to navigate to Learning Paths tab
+                    if st.button("Create Learning Paths for Priority Skills"):
+                        st.session_state.active_tab = "Learning Paths"
+                        st.rerun()
                 
                 else:
                     st.error("Failed to generate structured analysis.")
@@ -170,14 +185,19 @@ def display_learning_paths_tab(advisor):
         st.session_state.skill_progress = {}
     
     # Check if analysis has been performed
-    analysis_available = "last_analysis" in st.session_state
+    analysis_available = st.session_state.skill_analysis_results is not None
     
     # Get priority skills from analysis if available
     priority_skills = []
-    if analysis_available and "structured_data" in st.session_state.last_analysis:
-        analysis = st.session_state.last_analysis
+    if analysis_available and "structured_data" in st.session_state.skill_analysis_results:
+        analysis = st.session_state.skill_analysis_results
         if "priority_skills" in analysis["structured_data"]:
             priority_skills = analysis["structured_data"]["priority_skills"]
+            
+            # Display a message about the priority skills from analysis
+            if priority_skills:
+                st.info(f"Based on your skill analysis for {analysis.get('target_role', 'your target role')}, "
+                       f"we recommend focusing on these priority skills: {', '.join(priority_skills)}")
     
     # Default skills if none are available from analysis
     default_skills = [
@@ -187,6 +207,10 @@ def display_learning_paths_tab(advisor):
     
     # Combine skills for selection
     all_skills = priority_skills + [skill for skill in default_skills if skill not in priority_skills]
+    
+    # Add user's current skills if they're not already in the list
+    user_skills = st.session_state.user_context.get("skills", [])
+    all_skills = all_skills + [skill for skill in user_skills if skill not in all_skills]
     
     with st.form("learning_path_form"):
         col5, col6 = st.columns(2)
@@ -223,7 +247,8 @@ def display_learning_paths_tab(advisor):
                 learning_path = advisor.create_learning_path(
                     skill=skill_to_learn,
                     current_level=current_level,
-                    target_level=target_level
+                    target_level=target_level,
+                    user_id=st.session_state.user_context.get("user_id")
                 )
                 
                 # Check for error in response
@@ -309,8 +334,10 @@ def display_learning_paths_tab(advisor):
                         
                         st.success(f"Now tracking progress for {skill_to_learn}!")
                         
-                        # Force a rerun to update the display
-                        st.rerun()
+                        # Offer to go to progress tracking tab
+                        if st.button("Go to Progress Tracking"):
+                            st.session_state.active_tab = "Progress Tracking"
+                            st.rerun()
             
                     except Exception as e:
                         st.error(f"Error tracking skill: {str(e)}")
@@ -396,8 +423,10 @@ def display_learning_paths_tab(advisor):
                 
                 st.success(f"Now tracking progress for {skill_to_learn}!")
                 
-                # Force a rerun to update the display
-                st.rerun()
+                # Offer to go to progress tracking tab
+                if st.button("Go to Progress Tracking"):
+                    st.session_state.active_tab = "Progress Tracking"
+                    st.rerun()
         
             except Exception as e:
                 st.error(f"Error tracking skill: {str(e)}")
@@ -507,6 +536,11 @@ def display_progress_tracking_tab(advisor):
     
     if not combined_paths:
         st.info("No active learning paths. Create a learning path to start tracking progress!")
+        
+        # Add a button to navigate to Learning Paths tab
+        if st.button("Create a Learning Path"):
+            st.session_state.active_tab = "Learning Paths"
+            st.rerun()
         return
     
     # Display learning path selection

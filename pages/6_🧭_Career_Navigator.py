@@ -46,12 +46,12 @@ def main():
     """)
     
     # Career planning form
-    with st.form("career_planning_form"):
+    with st.form("career_plan_form"):
         # Current status
         st.header("Current Status")
         current_role = st.text_input(
             "Current Role",
-            value=st.session_state.user_context.get("current_role", "")
+            value=st.session_state.user_context.get("user_role", "")
         )
         experience = st.text_input(
             "Years of Experience",
