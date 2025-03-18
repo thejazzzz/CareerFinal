@@ -451,17 +451,17 @@ class SkillsAdvisorAgent(BaseAgent):
                 ]
                 
                 learning_path["structured_data"]["resources"] = [
-                    {"id": str(uuid.uuid4()), "title": f"{skill_name} online courses", "description": f"Structured courses covering {skill_name}", "url": f"https://www.coursera.org/search?query={skill_name.replace(' ', '+')}"},
-                    {"id": str(uuid.uuid4()), "title": f"{skill_name} books and guides", "description": f"Comprehensive learning materials for {skill_name}", "url": f"https://www.amazon.com/s?k={skill_name.replace(' ', '+')}+books"},
-                    {"id": str(uuid.uuid4()), "title": f"{skill_name} communities", "description": f"Online forums and groups for {skill_name} practitioners", "url": f"https://www.reddit.com/search/?q={skill_name.replace(' ', '+')}"},
-                    {"id": str(uuid.uuid4()), "title": f"YouTube tutorials on {skill_name}", "description": f"Video-based learning for {skill_name}", "url": f"https://www.youtube.com/results?search_query={skill_name.replace(' ', '+')}+tutorial"},
-                    {"id": str(uuid.uuid4()), "title": f"{skill_name} certification programs", "description": f"Professional certifications for {skill_name}", "url": ""}
+                    {"id": str(uuid.uuid4()), "title": "Online Courses", "description": f"Interactive courses teaching {skill_name} fundamentals and applications", "url": f"https://www.coursera.org/search?query={skill_name.replace(' ', '+')}"},
+                    {"id": str(uuid.uuid4()), "title": "Books & Guides", "description": f"Comprehensive learning materials and reference guides", "url": f"https://www.amazon.com/s?k={skill_name.replace(' ', '+')}+books"},
+                    {"id": str(uuid.uuid4()), "title": "Community Forums", "description": f"Connect with other learners and experts in the field", "url": f"https://www.reddit.com/search/?q={skill_name.replace(' ', '+')}"},
+                    {"id": str(uuid.uuid4()), "title": "Video Tutorials", "description": f"Visual step-by-step learning resources", "url": f"https://www.youtube.com/results?search_query={skill_name.replace(' ', '+')}+tutorial"},
+                    {"id": str(uuid.uuid4()), "title": "Certification Programs", "description": f"Professional credentials to validate your expertise", "url": ""}
                 ]
                 
                 learning_path["structured_data"]["exercises"] = [
-                    {"id": str(uuid.uuid4()), "title": f"Basic {skill_name} project", "description": f"Apply fundamental {skill_name} concepts"},
-                    {"id": str(uuid.uuid4()), "title": f"Intermediate {skill_name} challenge", "description": f"Solve more complex problems using {skill_name}"},
-                    {"id": str(uuid.uuid4()), "title": f"Advanced {skill_name} application", "description": f"Demonstrate expertise by applying {skill_name} to complex situations"}
+                    {"id": str(uuid.uuid4()), "title": "Beginner Project", "description": f"Apply fundamental {skill_name} concepts to a simple project"},
+                    {"id": str(uuid.uuid4()), "title": "Practice Challenge", "description": f"Solve real-world problems using intermediate skills"},
+                    {"id": str(uuid.uuid4()), "title": "Advanced Application", "description": f"Create a complex solution demonstrating mastery"}
                 ]
                 
                 learning_path["structured_data"]["timeline"] = [

@@ -323,21 +323,20 @@ def display_learning_paths_tab(advisor):
                     if resources:
                         for resource in resources:
                             if isinstance(resource, dict):
-                                with st.expander(f"Resource: {resource['title']}"):
-                                    st.write(f"**{resource['title']}**")
-                                    st.write(resource['description'])
+                                # Create a cleaner resource display with shorter content
+                                with st.expander(resource['title']):
+                                    st.write(f"**Description:** {resource['description']}")
                                     if resource.get('url'):
                                         st.write(f"[Open Resource]({resource['url']})")
                             else:
-                                with st.expander(f"Resource: {resource.split(':')[0] if ':' in resource else resource}"):
+                                # Handle string resources if present
+                                title = resource.split(':')[0] if ':' in resource else resource
+                                with st.expander(title):
                                     st.write(resource)
                     else:
-                        # Add some default resources if none are found
-                        st.warning("No specific resources found. Here are some general recommendations:")
-                        st.write("• Online courses on platforms like Coursera, Udemy, or LinkedIn Learning")
-                        st.write("• Industry-specific books and publications")
-                        st.write("• Documentation and official guides")
-                    
+                        st.warning("No resources found.")
+
+                    # Exercise section with proper indentation
                     st.subheader("✍️ Practice Exercises")
                     exercises = learning_path["structured_data"]["exercises"]
                     if exercises:
@@ -347,10 +346,7 @@ def display_learning_paths_tab(advisor):
                             else:
                                 st.write(f"{i}. {exercise}")
                     else:
-                        st.warning("No practice exercises found. Try these general exercises:")
-                        st.write("1. Create a small project to practice fundamental concepts")
-                        st.write("2. Solve practice problems related to this skill")
-                        st.write("3. Apply this skill to improve an existing project")
+                        st.warning("No practice exercises found.")
                 
                 with col8:
                     st.subheader("⏱️ Timeline and Milestones")
@@ -434,16 +430,18 @@ def display_learning_paths_tab(advisor):
             if resources:
                 for resource in resources:
                     if isinstance(resource, dict):
-                        with st.expander(f"Resource: {resource['title']}"):
-                            st.write(f"**{resource['title']}**")
-                            st.write(resource['description'])
+                        # Create a cleaner resource display with shorter content
+                        with st.expander(resource['title']):
+                            st.write(f"**Description:** {resource['description']}")
                             if resource.get('url'):
                                 st.write(f"[Open Resource]({resource['url']})")
                     else:
-                        with st.expander(f"Resource: {resource.split(':')[0] if ':' in resource else resource}"):
+                        # Handle string resources if present
+                        title = resource.split(':')[0] if ':' in resource else resource
+                        with st.expander(title):
                             st.write(resource)
-                else:
-                    st.warning("No resources found.")
+            else:
+                st.warning("No resources found.")
                 
                 st.subheader("✍️ Practice Exercises")
                 exercises = learning_path["structured_data"]["exercises"]

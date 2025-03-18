@@ -117,11 +117,18 @@ def main():
                 # Career paths with improved display
                 st.header("🎯 Potential Career Paths")
                 for i, path in enumerate(career_path["structured_data"]["path_options"], 1):
-                    st.subheader(f"Path {i}: {path}")
+                    # Extract just the path name without any "Path X:" prefix if it exists
+                    if ":" in path:
+                        # If the path already includes a label like "Path 1:", extract just the content after that
+                        path_name = path.split(":", 1)[1].strip()
+                    else:
+                        path_name = path
+                    
+                    st.subheader(f"Path {i}: {path_name}")
                     
                     # Analyze role for each path
                     role_analysis = navigator.analyze_role(
-                        target_role=path,
+                        target_role=path_name,  # Use the cleaned path name
                         industry=industry
                     )
                     
@@ -177,24 +184,16 @@ def main():
                     st.warning("No industry trends available")
                 
                 # Required Skills with improved display
-                st.header("🎓 Required Skills and Certifications")
+                st.header("🔧 Required Skills")
                 skills_data = career_path["structured_data"]["required_skills"]
-                col1, col2, col3 = st.columns(3)
                 
-                with col1:
-                    st.subheader("Technical Skills")
-                    for skill in skills_data["technical"]:
+                # Display only technical skills in a single column
+                st.subheader("Technical Skills")
+                for skill in skills_data["technical"]:
+                    if skill != "Technical skills information not available":
                         st.write(f"• {skill}")
-                
-                with col2:
-                    st.subheader("Soft Skills")
-                    for skill in skills_data["soft"]:
-                        st.write(f"• {skill}")
-                
-                with col3:
-                    st.subheader("Certifications")
-                    for cert in skills_data["certifications"]:
-                        st.write(f"• {cert}")
+                    else:
+                        st.info("Technical skills information not available. Try creating a more specific career plan.")
                 
                 # Save career plan
                 if st.button("Save Career Plan"):
