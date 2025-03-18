@@ -17,6 +17,7 @@ from utils.form_validation import FormValidation
 from utils.data_persistence import DataPersistence
 from components.profile_dashboard import ProfileDashboard
 from components.styling import custom_hero_section, feature_card, resume_upload_area, profile_completion_indicator, apply_custom_css
+from components.learning_path_progress import display_learning_path_progress
 
 # Page configuration
 st.set_page_config(
@@ -444,10 +445,13 @@ def main():
         dashboard = ProfileDashboard(st.session_state.user_context)
         dashboard.render()
         
+        # Current Learning Path Progress (only here, not later)
+        display_learning_path_progress()
+        
         # Quick actions section
         st.markdown("<h3 style='color: white;'>Quick Actions</h3>", unsafe_allow_html=True)
         
-        cols = st.columns(4)
+        cols = st.columns(5)  # Changed from 4 to 5 columns
         with cols[0]:
             if st.button("✉️ Create Cover Letter", use_container_width=True):
                 st.switch_page("pages/2_✉️_Cover_Letter_Generator.py")
@@ -460,6 +464,15 @@ def main():
         with cols[3]:
             if st.button("🎯 Update Skills", use_container_width=True):
                 st.switch_page("pages/5_📚_Skills_Development.py")
+        with cols[4]:
+            # Note: Resume Analyzer page is currently hidden
+            if st.button("📝 Resume Analysis", use_container_width=True):
+                try:
+                    # First try with underscore prefix
+                    st.switch_page("pages/_3_📝_Resume_Analyzer.py")
+                except Exception as e:
+                    st.error("Resume Analyzer page is not available. Please contact support.")
+                    print(f"Error switching to Resume Analyzer page: {str(e)}")
         
         # Resume Update section
         st.markdown("<h3 style='color: white;'>Update Your Resume</h3>", unsafe_allow_html=True)
@@ -525,7 +538,7 @@ def main():
                         if os.path.exists(temp_path):
                             os.remove(temp_path)
         
-        # Recent activity
+        # Recent activity (removing duplicate learning path display here)
         st.markdown("<h3 style='color: white;'>Recent Activity</h3>", unsafe_allow_html=True)
         
         if st.session_state.user_context.get("activities"):
@@ -726,6 +739,8 @@ if st.session_state.profile_completed:
         st.rerun()
 
 # Add Resume Analyzer direct link
+# Removed from sidebar to hide it completely
+
 st.sidebar.markdown("---")
 st.sidebar.markdown(
     """

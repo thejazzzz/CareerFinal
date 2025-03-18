@@ -9,7 +9,8 @@ class DataPersistence:
     def __init__(self, data_dir: str = "data"):
         """Initialize data persistence with a data directory"""
         self.data_dir = data_dir
-        self.default_user_id = "anonymous"
+        # Use a valid UUID as default user ID instead of "anonymous"
+        self.default_user_id = str(uuid.uuid4())
         os.makedirs(data_dir, exist_ok=True)
         self.use_supabase = True  # Flag to determine whether to use Supabase or local files
     
@@ -66,6 +67,13 @@ class DataPersistence:
             file_path = os.path.join(self.data_dir, f"user_{user_id}.json")
             if os.path.exists(file_path):
                 with open(file_path, "r") as f:
+                    return json.load(f)
+            
+            # If we get here, try loading the anonymous file as a last resort
+            legacy_file_path = os.path.join(self.data_dir, "user_anonymous.json")
+            if os.path.exists(legacy_file_path):
+                print(f"Loading legacy anonymous user data from {legacy_file_path}")
+                with open(legacy_file_path, "r") as f:
                     return json.load(f)
             
             return {}

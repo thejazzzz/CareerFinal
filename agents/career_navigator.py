@@ -300,6 +300,18 @@ class CareerNavigatorAgent(BaseAgent):
                 items = [item.strip("- ") for item in section.split("\n") if item.strip()]
                 parsed_data[current_section].extend(items)
         
+        # Add default values if sections are empty
+        if not parsed_data["overview"]:
+            parsed_data["overview"] = ["Role overview information not available"]
+        if not parsed_data["requirements"]:
+            parsed_data["requirements"] = ["Required skills information not available"]
+        if not parsed_data["outlook"]:
+            parsed_data["outlook"] = ["Industry outlook information not available"]
+        if not parsed_data["salary"]:
+            parsed_data["salary"] = ["Salary range information not available"]
+        if not parsed_data["companies"]:
+            parsed_data["companies"] = ["Key companies information not available"]
+        
         return parsed_data
     
     def get_required_fields(self) -> List[str]:

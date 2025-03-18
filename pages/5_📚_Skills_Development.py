@@ -28,7 +28,7 @@ def initialize_session_state():
         st.session_state.skill_progress = {}
     
     if "active_tab" not in st.session_state:
-        st.session_state.active_tab = "analysis"
+        st.session_state.active_tab = "Skill Analysis"
     
     if "learning_paths" not in st.session_state:
         st.session_state.learning_paths = {}
@@ -49,10 +49,23 @@ def main():
     # Set user profile in advisor
     advisor.set_user_profile(st.session_state.user_context)
     
-    # Create tabs
+    # Create tabs - using session state to maintain selected tab
     tabs = ["Skill Analysis", "Learning Paths", "Progress Tracking"]
-    active_tab = st.radio("Navigation", tabs, horizontal=True)
     
+    # Get active tab from session state or use radio button
+    if "active_tab" not in st.session_state:
+        st.session_state.active_tab = "Skill Analysis"
+    
+    # Radio button should reflect the active tab in session state
+    active_tab = st.radio("Navigation", tabs, 
+                         index=tabs.index(st.session_state.active_tab),
+                         horizontal=True,
+                         key="tab_navigation")
+    
+    # Update session state when radio button changes
+    st.session_state.active_tab = active_tab
+    
+    # Display the content of the selected tab
     if active_tab == "Skill Analysis":
         display_skill_analysis_tab(advisor)
     elif active_tab == "Learning Paths":
@@ -163,7 +176,13 @@ def display_skill_analysis_tab(advisor):
                     
                     # Add a button to navigate to Learning Paths tab
                     if st.button("Create Learning Paths for Priority Skills"):
+                        # Update the session state variable
                         st.session_state.active_tab = "Learning Paths"
+                        
+                        # Optionally set a flag to indicate we came from skill analysis
+                        st.session_state.from_skill_analysis = True
+                        
+                        # Force rerun to apply the change
                         st.rerun()
                 
                 else:
@@ -212,13 +231,21 @@ def display_learning_paths_tab(advisor):
     user_skills = st.session_state.user_context.get("skills", [])
     all_skills = all_skills + [skill for skill in user_skills if skill not in all_skills]
     
+    # Default skill selection - use first priority skill if coming from skill analysis
+    default_skill = ""
+    if st.session_state.get("from_skill_analysis", False) and priority_skills:
+        default_skill = priority_skills[0]
+        # Reset the flag
+        st.session_state.from_skill_analysis = False
+    
     with st.form("learning_path_form"):
         col5, col6 = st.columns(2)
         
         with col5:
             skill_to_learn = st.selectbox(
                 "Select Skill to Develop",
-                options=[""] + all_skills
+                options=[""] + all_skills,
+                index=0 if default_skill == "" else all_skills.index(default_skill) + 1
             )
             
             current_level = st.selectbox(
@@ -245,9 +272,9 @@ def display_learning_paths_tab(advisor):
             try:
                 # Get learning path
                 learning_path = advisor.create_learning_path(
-                    skill=skill_to_learn,
-                    current_level=current_level,
-                    target_level=target_level,
+                    skill_name=skill_to_learn,
+                    target_role=st.session_state.user_context.get("target_role", ""),
+                    skill_level=current_level,
                     user_id=st.session_state.user_context.get("user_id")
                 )
                 
@@ -264,6 +291,13 @@ def display_learning_paths_tab(advisor):
                 # Store in session state
                 st.session_state.current_learning_path = learning_path
                 
+                # Initialize progress information for display in profile
+                st.session_state.current_learning_path['title'] = skill_to_learn
+                st.session_state.current_learning_path['progress'] = {
+                    'completed': 0,
+                    'total': 100
+                }
+                
                 # Display learning path
                 st.success(f"Learning path created for {skill_to_learn}!")
                 
@@ -272,7 +306,10 @@ def display_learning_paths_tab(advisor):
                 objectives = learning_path["structured_data"]["objectives"]
                 if objectives:
                     for obj in objectives:
-                        st.write(f"• {obj}")
+                        if isinstance(obj, dict):
+                            st.write(f"• **{obj['title']}**: {obj['description']}")
+                        else:
+                            st.write(f"• {obj}")
                 else:
                     st.warning("No learning objectives found.")
                 st.divider()
@@ -285,22 +322,40 @@ def display_learning_paths_tab(advisor):
                     resources = learning_path["structured_data"]["resources"]
                     if resources:
                         for resource in resources:
-                            with st.expander(f"Resource: {resource.split(':')[0] if ':' in resource else resource}"):
-                                st.write(resource)
+                            if isinstance(resource, dict):
+                                with st.expander(f"Resource: {resource['title']}"):
+                                    st.write(f"**{resource['title']}**")
+                                    st.write(resource['description'])
+                                    if resource.get('url'):
+                                        st.write(f"[Open Resource]({resource['url']})")
+                            else:
+                                with st.expander(f"Resource: {resource.split(':')[0] if ':' in resource else resource}"):
+                                    st.write(resource)
                     else:
-                        st.warning("No resources found.")
+                        # Add some default resources if none are found
+                        st.warning("No specific resources found. Here are some general recommendations:")
+                        st.write("• Online courses on platforms like Coursera, Udemy, or LinkedIn Learning")
+                        st.write("• Industry-specific books and publications")
+                        st.write("• Documentation and official guides")
                     
                     st.subheader("✍️ Practice Exercises")
                     exercises = learning_path["structured_data"]["exercises"]
                     if exercises:
                         for i, exercise in enumerate(exercises, 1):
-                            st.write(f"{i}. {exercise}")
+                            if isinstance(exercise, dict):
+                                st.write(f"{i}. **{exercise['title']}**: {exercise['description']}")
+                            else:
+                                st.write(f"{i}. {exercise}")
                     else:
-                        st.warning("No practice exercises found.")
+                        st.warning("No practice exercises found. Try these general exercises:")
+                        st.write("1. Create a small project to practice fundamental concepts")
+                        st.write("2. Solve practice problems related to this skill")
+                        st.write("3. Apply this skill to improve an existing project")
                 
                 with col8:
                     st.subheader("⏱️ Timeline and Milestones")
-                    timeline = learning_path["structured_data"]["timeline"]
+                    # Safely access timeline with fallback
+                    timeline = learning_path["structured_data"].get("timeline", [])
                     if timeline:
                         for milestone in timeline:
                             st.info(milestone)
@@ -308,7 +363,8 @@ def display_learning_paths_tab(advisor):
                         st.warning("No timeline found.")
                     
                     st.subheader("📋 Assessment Criteria")
-                    assessment = learning_path["structured_data"]["assessment"]
+                    # Safely access assessment with fallback
+                    assessment = learning_path["structured_data"].get("assessment", [])
                     if assessment:
                         for criterion in assessment:
                             st.success(criterion)
@@ -321,7 +377,7 @@ def display_learning_paths_tab(advisor):
                         # Create a new skill progress entry
                         new_skill_progress = {
                             "skill_name": skill_to_learn,
-                            "current_level": current_level,
+                            "current_level": learning_path.get("skill_level", "beginner"),
                             "target_level": target_level,
                             "start_date": datetime.now().strftime("%Y-%m-%d"),
                             "learning_path": learning_path["structured_data"],
@@ -352,7 +408,7 @@ def display_learning_paths_tab(advisor):
     # Display current learning path if available
     elif st.session_state.current_learning_path is not None:
         learning_path = st.session_state.current_learning_path
-        skill_to_learn = learning_path.get("skill", "Unknown Skill")
+        skill_to_learn = learning_path.get("skill_name", "Unknown Skill")
         
         st.success(f"Current learning path: {skill_to_learn}")
         
@@ -361,7 +417,10 @@ def display_learning_paths_tab(advisor):
         objectives = learning_path["structured_data"]["objectives"]
         if objectives:
             for obj in objectives:
-                st.write(f"• {obj}")
+                if isinstance(obj, dict):
+                    st.write(f"• **{obj['title']}**: {obj['description']}")
+                else:
+                    st.write(f"• {obj}")
         else:
             st.warning("No learning objectives found.")
         st.divider()
@@ -374,22 +433,33 @@ def display_learning_paths_tab(advisor):
             resources = learning_path["structured_data"]["resources"]
             if resources:
                 for resource in resources:
-                    with st.expander(f"Resource: {resource.split(':')[0] if ':' in resource else resource}"):
-                        st.write(resource)
-            else:
-                st.warning("No resources found.")
-            
-            st.subheader("✍️ Practice Exercises")
-            exercises = learning_path["structured_data"]["exercises"]
-            if exercises:
-                for i, exercise in enumerate(exercises, 1):
-                    st.write(f"{i}. {exercise}")
-            else:
-                st.warning("No practice exercises found.")
+                    if isinstance(resource, dict):
+                        with st.expander(f"Resource: {resource['title']}"):
+                            st.write(f"**{resource['title']}**")
+                            st.write(resource['description'])
+                            if resource.get('url'):
+                                st.write(f"[Open Resource]({resource['url']})")
+                    else:
+                        with st.expander(f"Resource: {resource.split(':')[0] if ':' in resource else resource}"):
+                            st.write(resource)
+                else:
+                    st.warning("No resources found.")
+                
+                st.subheader("✍️ Practice Exercises")
+                exercises = learning_path["structured_data"]["exercises"]
+                if exercises:
+                    for i, exercise in enumerate(exercises, 1):
+                        if isinstance(exercise, dict):
+                            st.write(f"{i}. **{exercise['title']}**: {exercise['description']}")
+                        else:
+                            st.write(f"{i}. {exercise}")
+                    else:
+                        st.warning("No practice exercises found.")
         
         with col8:
             st.subheader("⏱️ Timeline and Milestones")
-            timeline = learning_path["structured_data"]["timeline"]
+            # Safely access timeline with fallback
+            timeline = learning_path["structured_data"].get("timeline", [])
             if timeline:
                 for milestone in timeline:
                     st.info(milestone)
@@ -397,7 +467,8 @@ def display_learning_paths_tab(advisor):
                 st.warning("No timeline found.")
             
             st.subheader("📋 Assessment Criteria")
-            assessment = learning_path["structured_data"]["assessment"]
+            # Safely access assessment with fallback
+            assessment = learning_path["structured_data"].get("assessment", [])
             if assessment:
                 for criterion in assessment:
                     st.success(criterion)
@@ -410,8 +481,8 @@ def display_learning_paths_tab(advisor):
                 # Create a new skill progress entry
                 new_skill_progress = {
                     "skill_name": skill_to_learn,
-                    "current_level": learning_path.get("current_level", "beginner"),
-                    "target_level": learning_path.get("target_level", "advanced"),
+                    "current_level": learning_path.get("skill_level", "beginner"),
+                    "target_level": target_level,
                     "start_date": datetime.now().strftime("%Y-%m-%d"),
                     "learning_path": learning_path["structured_data"],
                     "completed_objectives": [],
@@ -444,15 +515,32 @@ def display_learning_paths_tab(advisor):
                 
                 # Calculate and display progress
                 total_objectives = len(progress_data['learning_path']['objectives'])
-                completed = len(progress_data.get('completed_objectives', []))
+                
+                # Count completed objectives, handling both string and object formats
+                if progress_data['learning_path']['objectives'] and isinstance(progress_data['learning_path']['objectives'][0], dict):
+                    # Handle object format where we use the ID for tracking
+                    completed_objective_ids = progress_data.get('completed_objectives', [])
+                    completed = len(completed_objective_ids)
+                else:
+                    # Handle string format
+                    completed = len(progress_data.get('completed_objectives', []))
+                
                 progress_percentage = int((completed / total_objectives) * 100) if total_objectives > 0 else 0
                 
                 # Update progress percentage
                 progress_data['progress_percentage'] = progress_percentage
                 
+                # Update current_learning_path for display in profile
+                if 'current_learning_path' in st.session_state:
+                    st.session_state.current_learning_path['title'] = skill_name
+                    st.session_state.current_learning_path['progress'] = {
+                        'completed': progress_percentage,
+                        'total': 100
+                    }
+                
                 # Display progress bar
                 st.progress(progress_percentage / 100)
-                st.write(f"**Progress:** {progress_percentage}% ({completed}/{total_objectives} objectives completed)")
+                st.write(f"**Progress:** {int(progress_percentage)}% ({completed}/{total_objectives} objectives completed)")
                 
                 # Objectives with checkboxes
                 st.subheader("Learning Objectives")
@@ -460,17 +548,34 @@ def display_learning_paths_tab(advisor):
                 # Create a unique key for each objective
                 for i, objective in enumerate(progress_data['learning_path']['objectives']):
                     obj_key = f"{skill_name}_obj_{i}"
-                    is_completed = objective in progress_data.get('completed_objectives', [])
                     
-                    # Create a checkbox for each objective
-                    if st.checkbox(objective, value=is_completed, key=obj_key):
-                        if objective not in progress_data.get('completed_objectives', []):
-                            if 'completed_objectives' not in progress_data:
-                                progress_data['completed_objectives'] = []
-                            progress_data['completed_objectives'].append(objective)
+                    # Handle objective in both formats
+                    if isinstance(objective, dict):
+                        obj_id = objective.get('id', str(i))
+                        obj_title = objective.get('title', '')
+                        is_completed = obj_id in progress_data.get('completed_objectives', [])
+                        
+                        # Create a checkbox for each objective
+                        if st.checkbox(obj_title, value=is_completed, key=obj_key):
+                            if obj_id not in progress_data.get('completed_objectives', []):
+                                if 'completed_objectives' not in progress_data:
+                                    progress_data['completed_objectives'] = []
+                                progress_data['completed_objectives'].append(obj_id)
+                        else:
+                            if obj_id in progress_data.get('completed_objectives', []):
+                                progress_data['completed_objectives'].remove(obj_id)
                     else:
-                        if objective in progress_data.get('completed_objectives', []):
-                            progress_data['completed_objectives'].remove(objective)
+                        is_completed = objective in progress_data.get('completed_objectives', [])
+                        
+                        # Create a checkbox for each objective
+                        if st.checkbox(objective, value=is_completed, key=obj_key):
+                            if objective not in progress_data.get('completed_objectives', []):
+                                if 'completed_objectives' not in progress_data:
+                                    progress_data['completed_objectives'] = []
+                                progress_data['completed_objectives'].append(objective)
+                        else:
+                            if objective in progress_data.get('completed_objectives', []):
+                                progress_data['completed_objectives'].remove(objective)
                 
                 # Resources section
                 st.subheader("Resources")
@@ -508,9 +613,19 @@ def display_progress_tracking_tab(advisor):
             timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
             path_id = f"{skill_name}_{timestamp}"
             
+            # Ensure progress_percentage exists
+            if 'progress_percentage' not in progress_data:
+                # Calculate the percentage if it doesn't exist
+                if 'learning_path' in progress_data and 'objectives' in progress_data['learning_path']:
+                    total_objectives = len(progress_data['learning_path']['objectives'])
+                    completed = len(progress_data.get('completed_objectives', []))
+                    progress_data['progress_percentage'] = int((completed / total_objectives) * 100) if total_objectives > 0 else 0
+                else:
+                    progress_data['progress_percentage'] = 0
+            
             session_paths.append({
                 "id": path_id,
-                "skill": skill_name,
+                "skill_name": skill_name,
                 "current_level": progress_data.get("current_level", "beginner"),
                 "target_level": progress_data.get("target_level", "advanced"),
                 "created_at": progress_data.get("start_date", datetime.now().strftime("%Y-%m-%d")),
@@ -531,8 +646,8 @@ def display_progress_tracking_tab(advisor):
     disk_paths = advisor.get_user_learning_paths(user_id)
     
     # Combine paths, prioritizing disk paths if there are duplicates
-    disk_path_skills = {path["skill"] for path in disk_paths}
-    combined_paths = disk_paths + [path for path in session_paths if path["skill"] not in disk_path_skills]
+    disk_path_skills = {path.get("skill_name", "") for path in disk_paths}
+    combined_paths = disk_paths + [path for path in session_paths if path.get("skill_name", "") not in disk_path_skills]
     
     if not combined_paths:
         st.info("No active learning paths. Create a learning path to start tracking progress!")
@@ -544,7 +659,14 @@ def display_progress_tracking_tab(advisor):
         return
     
     # Display learning path selection
-    path_options = {f"{path['skill']} ({path['current_level']} → {path['target_level']})": path["id"] for path in combined_paths}
+    path_options = {}
+    for path in combined_paths:
+        # Handle both old and new field names
+        skill = path.get("skill_name", path.get("skill", "Unknown Skill"))
+        current = path.get("skill_level", path.get("current_level", "beginner"))
+        target = path.get("target_role", path.get("target_level", "advanced"))
+        path_options[f"{skill} ({current} → {target})"] = path["id"]
+    
     selected_path_display = st.selectbox(
         "Select Learning Path",
         options=list(path_options.keys())
@@ -559,9 +681,27 @@ def display_progress_tracking_tab(advisor):
         
         with col1:
             st.subheader("Progress Overview")
-            progress_percentage = path["progress"]["progress_percentage"]
-            st.progress(progress_percentage / 100)
-            st.metric("Overall Progress", f"{progress_percentage:.1f}%")
+            # Safely access progress_percentage with fallback
+            try:
+                if "progress" in path and "progress_percentage" in path["progress"]:
+                    progress_percentage = path["progress"]["progress_percentage"]
+                elif "progress" in path and isinstance(path["progress"], dict) and "completed" in path["progress"]:
+                    progress_percentage = path["progress"]["completed"]
+                else:
+                    # Calculate it from objectives if available
+                    if "structured_data" in path and "objectives" in path["structured_data"]:
+                        total = len(path["structured_data"]["objectives"])
+                        completed = len(path["progress"].get("completed_objectives", []))
+                        progress_percentage = int((completed / total) * 100) if total > 0 else 0
+                    else:
+                        progress_percentage = 0
+            except Exception as e:
+                st.error(f"Error calculating progress: {str(e)}")
+                progress_percentage = 0
+            
+            # Ensure progress_percentage is an integer for display
+            st.progress(int(progress_percentage) / 100)
+            st.metric("Overall Progress", f"{int(progress_percentage)}%")
             
             # Time tracking
             time_spent = st.number_input(
@@ -577,78 +717,196 @@ def display_progress_tracking_tab(advisor):
         with col2:
             st.subheader("Completed Items")
             # Display completion checkboxes for objectives
-            completed_objectives = st.multiselect(
-                "Learning Objectives",
-                options=path["structured_data"].get("objectives", []),
-                default=path["progress"].get("completed_objectives", [])
-            )
+            objectives_list = path["structured_data"].get("objectives", [])
             
-            # Display completion checkboxes for resources
-            completed_resources = st.multiselect(
-                "Resources",
-                options=path["structured_data"].get("resources", []),
-                default=path["progress"].get("completed_resources", [])
-            )
+            # Prepare options and defaults for objectives
+            objective_options = []
+            objective_defaults = []
             
-            # Display completion checkboxes for exercises
-            completed_exercises = st.multiselect(
-                "Exercises",
-                options=path["structured_data"].get("exercises", []),
-                default=path["progress"].get("completed_exercises", [])
-            )
+            # Handle both object and string formats
+            for obj in objectives_list:
+                if isinstance(obj, dict):
+                    objective_options.append({"label": obj["title"], "value": obj["id"]})
+                    if obj["id"] in path["progress"].get("completed_objectives", []):
+                        objective_defaults.append(obj["id"])
+                else:
+                    objective_options.append(obj)
+                    if obj in path["progress"].get("completed_objectives", []):
+                        objective_defaults.append(obj)
+            
+            # Determine if we're using dict format objectives
+            using_dict_objectives = objectives_list and isinstance(objectives_list[0], dict)
+            
+            # Display objectives multiselect
+            if using_dict_objectives:
+                completed_objectives = st.multiselect(
+                    "Learning Objectives",
+                    options=[opt["value"] for opt in objective_options],
+                    default=objective_defaults,
+                    format_func=lambda x: next((opt["label"] for opt in objective_options if opt["value"] == x), x)
+                )
+            else:
+                completed_objectives = st.multiselect(
+                    "Learning Objectives",
+                    options=objective_options,
+                    default=objective_defaults
+                )
+            
+            # Prepare resources
+            resources_list = path["structured_data"].get("resources", [])
+            
+            # Prepare options and defaults for resources
+            resource_options = []
+            resource_defaults = []
+            
+            # Handle both object and string formats
+            for res in resources_list:
+                if isinstance(res, dict):
+                    resource_options.append({"label": res["title"], "value": res["id"]})
+                    if res["id"] in path["progress"].get("completed_resources", []):
+                        resource_defaults.append(res["id"])
+                else:
+                    resource_options.append(res)
+                    if res in path["progress"].get("completed_resources", []):
+                        resource_defaults.append(res)
+            
+            # Determine if we're using dict format
+            using_dict_resources = resources_list and isinstance(resources_list[0], dict)
+            
+            # Display resources multiselect
+            if using_dict_resources:
+                completed_resources = st.multiselect(
+                    "Resources",
+                    options=[opt["value"] for opt in resource_options],
+                    default=resource_defaults,
+                    format_func=lambda x: next((opt["label"] for opt in resource_options if opt["value"] == x), x)
+                )
+            else:
+                completed_resources = st.multiselect(
+                    "Resources",
+                    options=resource_options,
+                    default=resource_defaults
+                )
+            
+            # Prepare exercises
+            exercises_list = path["structured_data"].get("exercises", [])
+            
+            # Prepare options and defaults for exercises
+            exercise_options = []
+            exercise_defaults = []
+            
+            # Handle both object and string formats
+            for ex in exercises_list:
+                if isinstance(ex, dict):
+                    exercise_options.append({"label": ex["title"], "value": ex["id"]})
+                    if ex["id"] in path["progress"].get("completed_exercises", []):
+                        exercise_defaults.append(ex["id"])
+                else:
+                    exercise_options.append(ex)
+                    if ex in path["progress"].get("completed_exercises", []):
+                        exercise_defaults.append(ex)
+            
+            # Determine if we're using dict format
+            using_dict_exercises = exercises_list and isinstance(exercises_list[0], dict)
+            
+            # Display exercises multiselect
+            if using_dict_exercises:
+                completed_exercises = st.multiselect(
+                    "Exercises",
+                    options=[opt["value"] for opt in exercise_options],
+                    default=exercise_defaults,
+                    format_func=lambda x: next((opt["label"] for opt in exercise_options if opt["value"] == x), x)
+                )
+            else:
+                completed_exercises = st.multiselect(
+                    "Exercises",
+                    options=exercise_options,
+                    default=exercise_defaults
+                )
         
         # Update progress button
         if st.button("Update Progress"):
             try:
+                # Ensure completed lists are never None
+                completed_objectives_list = completed_objectives or []
+                completed_resources_list = completed_resources or []
+                completed_exercises_list = completed_exercises or []
+                
                 # Update progress in the advisor
-                updated_path = advisor.update_skill_progress(
+                updated_path = advisor.update_learning_path_progress(
                     learning_path_id=path["id"],
-                    completed_objectives=completed_objectives,
-                    completed_resources=completed_resources,
-                    completed_exercises=completed_exercises,
-                    time_spent_hours=time_spent,
-                    user_notes=user_notes,
+                    completed_objectives=completed_objectives_list,
+                    completed_resources=completed_resources_list,
+                    completed_exercises=completed_exercises_list,
+                    time_spent_minutes=time_spent * 60,  # Convert hours to minutes
+                    reflection=user_notes,
                     user_id=user_id
                 )
                 
                 # Also update session state if this is a session-based path
-                if path["skill"] in st.session_state.get("skill_progress", {}):
-                    st.session_state.skill_progress[path["skill"]]["completed_objectives"] = completed_objectives
-                    st.session_state.skill_progress[path["skill"]]["progress_percentage"] = updated_path["progress"]["progress_percentage"]
+                if path["skill_name"] in st.session_state.get("skill_progress", {}):
+                    try:
+                        # Update the completed objectives in the session state
+                        st.session_state.skill_progress[path["skill_name"]]["completed_objectives"] = completed_objectives_list
+                        
+                        # Safely update progress_percentage
+                        if "progress" in updated_path and "progress_percentage" in updated_path["progress"]:
+                            progress_pct = updated_path["progress"]["progress_percentage"]
+                        else:
+                            # Calculate it if not available
+                            total = len(path["structured_data"].get("objectives", []))
+                            completed_count = len(completed_objectives_list)
+                            progress_pct = int((completed_count / total) * 100) if total > 0 else 0
+                        
+                        st.session_state.skill_progress[path["skill_name"]]["progress_percentage"] = progress_pct
+                        
+                        # Also update the current_learning_path for profile display
+                        if 'current_learning_path' in st.session_state:
+                            st.session_state.current_learning_path['title'] = path.get("skill_name", path.get("skill", "Unknown Skill"))
+                            st.session_state.current_learning_path['progress'] = {
+                                'completed': progress_pct,
+                                'total': 100
+                            }
+                    except Exception as e:
+                        st.warning(f"Note: Unable to update session state progress: {str(e)}")
                 
                 st.success("Progress updated successfully!")
                 
                 # Get assessment feedback
-                assessment = advisor.assess_progress(
-                    learning_path_id=path["id"],
-                    user_reflection=user_notes,
-                    user_id=user_id
-                )
-                
-                # Display assessment feedback
-                st.subheader("Progress Assessment")
-                
-                # Display feedback messages
-                for feedback in assessment["feedback"]:
-                    st.info(feedback)
-                
-                # Display next steps
-                st.subheader("Recommended Next Steps")
-                for step in assessment["next_steps"]:
-                    st.success(step)
-                
-                # Display section completion metrics
-                st.subheader("Section Completion")
-                col3, col4, col5 = st.columns(3)
-                
-                with col3:
-                    st.metric("Objectives", f"{assessment['objectives_completion']:.1f}%")
-                
-                with col4:
-                    st.metric("Resources", f"{assessment['resources_completion']:.1f}%")
-                
-                with col5:
-                    st.metric("Exercises", f"{assessment['exercises_completion']:.1f}%")
+                try:
+                    assessment = advisor.assess_progress(
+                        learning_path_id=path["id"],
+                        user_reflection=user_notes,
+                        user_id=user_id
+                    )
+                    
+                    # Display assessment feedback
+                    st.subheader("Progress Assessment")
+                    
+                    # Display feedback messages
+                    for feedback in assessment.get("feedback", []):
+                        st.info(feedback)
+                    
+                    # Display next steps
+                    st.subheader("Recommended Next Steps")
+                    for step in assessment.get("next_steps", []):
+                        st.success(step)
+                    
+                    # Display section completion metrics
+                    st.subheader("Section Completion")
+                    col3, col4, col5 = st.columns(3)
+                    
+                    with col3:
+                        st.metric("Objectives", f"{int(assessment.get('objectives_completion', 0))}%")
+                    
+                    with col4:
+                        st.metric("Resources", f"{int(assessment.get('resources_completion', 0))}%")
+                    
+                    with col5:
+                        st.metric("Exercises", f"{int(assessment.get('exercises_completion', 0))}%")
+                except Exception as e:
+                    st.error(f"Error generating assessment: {str(e)}")
+                    st.info("Your progress has been saved, but we couldn't generate an assessment at this time.")
                 
             except Exception as e:
                 st.error(f"Error updating progress: {str(e)}")

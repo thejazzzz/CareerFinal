@@ -1,5 +1,5 @@
 [theme]
-primaryColor = "#4299e1"
+primaryColor = "#4a5568"
 backgroundColor = "#1a202c"
 secondaryBackgroundColor = "#2d3748"
 textColor = "#f7fafc"
@@ -10,6 +10,7 @@ enableStaticServing = true
 
 [browser]
 gatherUsageStats = false
+serverAddress = "localhost"
 
 [ui]
 hideTopBar = false

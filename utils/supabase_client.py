@@ -1,9 +1,12 @@
 import os
-from supabase import create_client, Client
-from dotenv import load_dotenv
-import streamlit as st
+import sys
 import json
 import traceback
+import uuid
+import re
+from dotenv import load_dotenv
+from supabase import create_client, Client
+import streamlit as st
 
 # Load environment variables from .env file
 load_dotenv()
@@ -11,6 +14,15 @@ load_dotenv()
 # Get Supabase credentials from environment variables
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+# UUID validation regex pattern
+UUID_PATTERN = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
+
+def is_valid_uuid(val):
+    """Check if a string is a valid UUID"""
+    if not val:
+        return False
+    return bool(UUID_PATTERN.match(val))
 
 # Initialize Supabase client
 @st.cache_resource
@@ -46,18 +58,25 @@ def save_user_data(user_id, user_data):
         dict: The response from Supabase
     """
     try:
+        # Validate UUID format
+        if not is_valid_uuid(user_id):
+            print(f"Invalid UUID format: {user_id}. Generating a new UUID.")
+            user_id = str(uuid.uuid4())
+            # If user_context exists in user_data, update the user_id
+            if "user_context" in user_data:
+                user_data["user_context"]["user_id"] = user_id
+        
         supabase = get_supabase_client()
         
-        # Convert any non-serializable data to a JSON string
-        user_data_json = json.dumps(user_data, default=str)
-        
         # Prepare data for Supabase with the user_data column
+        # Note: Supabase automatically handles JSON serialization for JSONB columns
         data_to_save = {
             "id": user_id,
-            "user_data": user_data_json
+            "user_data": user_data  # No need to convert to JSON string, Supabase handles this
         }
         
         print(f"Attempting to save data for user {user_id} to Supabase")
+        print(f"Data structure being saved: {list(user_data.keys())}")
         
         # Use upsert to insert or update
         response = supabase.table('users').upsert(data_to_save).execute()
@@ -84,6 +103,11 @@ def load_user_data(user_id):
         dict: The user data or None if not found
     """
     try:
+        # Validate UUID format
+        if not is_valid_uuid(user_id):
+            print(f"Invalid UUID format: {user_id}. Cannot load from Supabase.")
+            return None
+        
         supabase = get_supabase_client()
         
         print(f"Attempting to load data for user {user_id} from Supabase")
@@ -96,13 +120,18 @@ def load_user_data(user_id):
         
         if response.data and len(response.data) > 0:
             print(f"Found data for user {user_id} in Supabase")
-            # Parse the JSON data from the user_data column
-            try:
-                user_data = json.loads(response.data[0].get("user_data", "{}"))
-                return user_data
-            except json.JSONDecodeError as e:
-                print(f"Error decoding JSON data for user {user_id}: {str(e)}")
-                return {}
+            # Get the user_data column which should already be parsed from JSONB
+            user_data = response.data[0].get("user_data", {})
+            
+            # If it's still a string for some reason, parse it
+            if isinstance(user_data, str):
+                try:
+                    user_data = json.loads(user_data)
+                except json.JSONDecodeError as e:
+                    print(f"Error decoding JSON data for user {user_id}: {str(e)}")
+                    return {}
+            
+            return user_data
         
         print(f"No data found for user {user_id} in Supabase")
         return None
@@ -154,17 +183,14 @@ def save_learning_path(user_id, learning_path):
     try:
         supabase = get_supabase_client()
         
-        # Ensure learning_path has an ID and user_id
-        if "id" not in learning_path:
-            raise ValueError("Learning path must have an 'id' field")
+        # Generate an ID if not present
+        path_id = learning_path.get("id", str(uuid.uuid4()))
         
         data_to_save = {
+            "id": path_id,
             "user_id": user_id,
-            **learning_path
+            "path_data": learning_path  # Supabase handles JSONB conversion
         }
-        
-        # Convert any non-serializable data
-        data_to_save = json.loads(json.dumps(data_to_save, default=str))
         
         print(f"Attempting to save learning path for user {user_id} to Supabase")
         
@@ -191,11 +217,33 @@ def get_user_learning_paths(user_id):
     Returns:
         list: The learning paths for the user
     """
-    supabase = get_supabase_client()
-    
-    response = supabase.table('learning_paths').select("*").eq("user_id", user_id).execute()
-    
-    return response.data if response.data else []
+    try:
+        supabase = get_supabase_client()
+        
+        response = supabase.table('learning_paths').select("*").eq("user_id", user_id).execute()
+        
+        if hasattr(response, 'error') and response.error:
+            print(f"Supabase error: {response.error}")
+            return []
+        
+        # Extract path_data from each record
+        paths = []
+        for record in response.data:
+            path_data = record.get("path_data", {})
+            if path_data:
+                # If it's a string, parse it
+                if isinstance(path_data, str):
+                    try:
+                        path_data = json.loads(path_data)
+                    except json.JSONDecodeError:
+                        continue
+                paths.append(path_data)
+        
+        return paths
+    except Exception as e:
+        print(f"Error getting learning paths from Supabase: {str(e)}")
+        traceback.print_exc()
+        return []
 
 def update_learning_path_progress(learning_path_id, progress_data):
     """
@@ -208,66 +256,116 @@ def update_learning_path_progress(learning_path_id, progress_data):
     Returns:
         dict: The response from Supabase
     """
-    supabase = get_supabase_client()
-    
-    # Get the current learning path
-    response = supabase.table('learning_paths').select("*").eq("id", learning_path_id).execute()
-    
-    if not response.data or len(response.data) == 0:
-        raise ValueError(f"Learning path with ID {learning_path_id} not found")
-    
-    learning_path = response.data[0]
-    
-    # Update the progress field
-    learning_path["progress"] = {
-        **(learning_path.get("progress", {})),
-        **progress_data
-    }
-    
-    # Save the updated learning path
-    update_response = supabase.table('learning_paths').update(learning_path).eq("id", learning_path_id).execute()
-    
-    return update_response.data
+    try:
+        supabase = get_supabase_client()
+        
+        # Get the current learning path
+        response = supabase.table('learning_paths').select("*").eq("id", learning_path_id).execute()
+        
+        if not response.data or len(response.data) == 0:
+            raise ValueError(f"Learning path with ID {learning_path_id} not found")
+        
+        # Get the path_data
+        path_data = response.data[0].get("path_data", {})
+        if isinstance(path_data, str):
+            path_data = json.loads(path_data)
+        
+        # Update the progress field
+        if "progress" not in path_data:
+            path_data["progress"] = {}
+        
+        path_data["progress"].update(progress_data)
+        
+        # Save the updated path_data
+        update_data = {
+            "path_data": path_data
+        }
+        
+        response = supabase.table('learning_paths').update(update_data).eq("id", learning_path_id).execute()
+        
+        if hasattr(response, 'error') and response.error:
+            print(f"Supabase error: {response.error}")
+            return None
+        
+        return response.data
+    except Exception as e:
+        print(f"Error updating learning path progress: {str(e)}")
+        traceback.print_exc()
+        return None
 
 # Skill analysis operations
 def save_skill_analysis(user_id, analysis_data):
     """
-    Save skill analysis results to Supabase.
+    Save a skill analysis to Supabase.
     
     Args:
         user_id (str): The unique identifier for the user
-        analysis_data (dict): The analysis data to save
+        analysis_data (dict): The skill analysis data to save
     
     Returns:
         dict: The response from Supabase
     """
-    supabase = get_supabase_client()
-    
-    data_to_save = {
-        "user_id": user_id,
-        "created_at": analysis_data.get("created_at", None),
-        "target_role": analysis_data.get("target_role", ""),
-        "structured_data": analysis_data.get("structured_data", {}),
-        "raw_analysis": analysis_data.get("raw_analysis", "")
-    }
-    
-    response = supabase.table('skill_analyses').insert(data_to_save).execute()
-    
-    return response.data
+    try:
+        supabase = get_supabase_client()
+        
+        # Generate an ID if not present
+        analysis_id = analysis_data.get("id", str(uuid.uuid4()))
+        
+        data_to_save = {
+            "id": analysis_id,
+            "user_id": user_id,
+            "analysis_data": analysis_data  # Supabase handles JSONB conversion
+        }
+        
+        print(f"Attempting to save skill analysis for user {user_id} to Supabase")
+        
+        response = supabase.table('skill_analyses').upsert(data_to_save).execute()
+        
+        if hasattr(response, 'error') and response.error:
+            print(f"Supabase error: {response.error}")
+            return None
+        
+        print(f"Successfully saved skill analysis for user {user_id} to Supabase")
+        return response.data
+    except Exception as e:
+        print(f"Error saving skill analysis to Supabase: {str(e)}")
+        traceback.print_exc()
+        return None
 
-def get_user_skill_analyses(user_id, limit=5):
+def get_user_skill_analyses(user_id):
     """
-    Get skill analyses for a user from Supabase.
+    Get all skill analyses for a user from Supabase.
     
     Args:
         user_id (str): The unique identifier for the user
-        limit (int): The maximum number of analyses to return
     
     Returns:
         list: The skill analyses for the user
     """
-    supabase = get_supabase_client()
-    
-    response = supabase.table('skill_analyses').select("*").eq("user_id", user_id).order("created_at", desc=True).limit(limit).execute()
-    
-    return response.data if response.data else [] 
+    try:
+        supabase = get_supabase_client()
+        
+        response = supabase.table('skill_analyses').select("*").eq("user_id", user_id).execute()
+        
+        if hasattr(response, 'error') and response.error:
+            print(f"Supabase error: {response.error}")
+            return []
+        
+        # Extract analysis_data from each record
+        analyses = []
+        for record in response.data:
+            analysis_data = record.get("analysis_data", {})
+            if analysis_data:
+                # If it's a string, parse it
+                if isinstance(analysis_data, str):
+                    try:
+                        analysis_data = json.loads(analysis_data)
+                    except json.JSONDecodeError:
+                        continue
+                analyses.append(analysis_data)
+        
+        return analyses
+    except Exception as e:
+        print(f"Error getting skill analyses from Supabase: {str(e)}")
+        traceback.print_exc()
+        return [] 
