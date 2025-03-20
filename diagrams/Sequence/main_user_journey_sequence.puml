@@ -1,0 +1,63 @@
+@startuml Main User Journey Sequence
+
+actor "User" as user
+participant "Streamlit Interface" as ui
+participant "Career Assistant System" as system
+participant "Data Storage" as storage
+
+title Career Assistant - Main User Journey
+
+user -> ui : Access System
+activate ui
+
+ui -> user : Display Landing Page
+user -> ui : Upload Resume / Create Profile
+
+ui -> system : Process User Data
+activate system
+system -> storage : Save User Context
+system -> ui : Display Dashboard
+deactivate system
+
+note right of user
+  User now has multiple options 
+  to explore in the system
+end note
+
+alt Career Planning Path
+    user -> ui : Navigate to Career Navigator
+    ui -> system : Access Career Navigator
+    system -> ui : Display Career Path Options
+    ui -> user : Show Career Path
+    
+else Job Search Path
+    user -> ui : Navigate to Job Search
+    ui -> system : Access Job Search
+    system -> ui : Display Job Listings
+    ui -> user : Show Job Options
+    
+else Skill Development Path
+    user -> ui : Navigate to Skill Development
+    ui -> system : Access Skills Advisor
+    system -> ui : Display Skill Recommendations
+    ui -> user : Show Learning Resources
+    
+else Interview Preparation Path
+    user -> ui : Navigate to Interview Coach
+    ui -> system : Access Interview Coach
+    system -> ui : Display Practice Questions
+    ui -> user : Show Interview Feedback
+    
+else Direct Assistance Path
+    user -> ui : Navigate to Chatbot
+    ui -> system : Access Career Chatbot
+    system -> ui : Display Conversation
+    ui -> user : Show Chat Responses
+end
+
+user -> ui : Return to Dashboard
+ui -> user : Display Updated Dashboard with Activity Summary
+
+deactivate ui
+
+@enduml 

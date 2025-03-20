@@ -1,0 +1,47 @@
+@startuml Resume Analysis Sequence
+
+actor "User" as user
+participant "Streamlit Interface" as ui
+participant "CareerAssistantSystem" as system
+participant "ResumeAnalyzerAgent" as resumeAgent
+participant "DataPersistence" as storage
+
+title Resume Upload and Analysis Sequence
+
+user -> ui : Upload Resume
+activate ui
+
+ui -> system : Process Resume
+activate system
+
+system -> resumeAgent : process_resume(file_path)
+activate resumeAgent
+
+resumeAgent -> resumeAgent : extract_skills()
+resumeAgent -> resumeAgent : extract_experience()
+resumeAgent -> resumeAgent : extract_education()
+resumeAgent -> resumeAgent : analyze_content()
+resumeAgent -> resumeAgent : provide_feedback()
+
+resumeAgent --> system : Return Analysis Results
+deactivate resumeAgent
+
+system -> ui : Return Structured Data
+deactivate system
+
+ui -> ui : Display Extracted Information
+ui -> ui : Show Skills
+ui -> ui : Show Experience
+ui -> ui : Show Resume Feedback
+
+ui -> user : Display Profile Completion Form
+user -> ui : Complete Profile (confirm/edit data)
+ui -> system : Save User Profile
+system -> storage : save_session_state()
+
+ui --> user : Profile Created Success Message
+ui --> user : Show Dashboard
+
+deactivate ui
+
+@enduml 

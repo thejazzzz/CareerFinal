@@ -1,0 +1,56 @@
+@startuml Career Planning Sequence
+
+actor "User" as user
+participant "Streamlit Interface" as ui
+participant "CareerNavigatorAgent" as navAgent
+participant "SkillsAdvisorAgent" as skillsAgent
+participant "DataPersistence" as storage
+
+title Career Planning Sequence
+
+user -> ui : Navigate to Career Navigator
+activate ui
+
+ui -> ui : Check User Profile
+alt Profile incomplete
+    ui -> user : Prompt to Complete Profile
+    user -> ui : Complete Profile
+end
+
+ui -> user : Display Career Planning Form
+user -> ui : Enter Career Goals and Preferences
+ui -> navAgent : create_career_path(user_data)
+activate navAgent
+
+navAgent -> navAgent : analyze_user_profile()
+navAgent -> navAgent : identify_career_options()
+navAgent -> navAgent : build_career_path()
+navAgent -> navAgent : identify_milestones()
+
+navAgent --> ui : Return Career Path
+deactivate navAgent
+
+ui -> user : Display Career Path Options
+user -> ui : Select Preferred Path
+
+ui -> skillsAgent : identify_skill_gaps()
+activate skillsAgent
+skillsAgent -> skillsAgent : analyze_required_skills()
+skillsAgent -> skillsAgent : compare_with_user_skills()
+skillsAgent -> skillsAgent : recommend_resources()
+skillsAgent --> ui : Return Skill Recommendations
+deactivate skillsAgent
+
+ui -> user : Display Skill Development Plan
+ui -> user : Show Career Milestones
+ui -> user : Show Learning Resources
+
+user -> ui : Save Career Plan
+ui -> storage : save_career_plan()
+storage --> ui : Confirm Save
+
+ui -> user : Confirm Plan Saved
+
+deactivate ui
+
+@enduml 

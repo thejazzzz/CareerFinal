@@ -1,0 +1,46 @@
+@startuml Resume and Job Search Components
+
+' Classes focused on resume and job search
+class ResumeAnalyzerAgent {
+  +process_resume(file_path): Map
+  +extract_skills(): List
+  +provide_feedback(): Map
+}
+
+class JobSearchAgent {
+  +search_jobs(criteria): List
+  +filter_results(results): List
+  +rank_opportunities(jobs): List
+}
+
+class CoverLetterGeneratorAgent {
+  +create_cover_letter(job_desc): String
+  +customize_content(template): String
+}
+
+' Data models
+class Job {
+  -title: String
+  -company: String
+  -description: String
+  -requirements: List
+  -location: String
+}
+
+' User class simplified
+class User {
+  -skills: List
+  -experience: String
+  -resumeData: Map
+}
+
+' Relationships
+User -- ResumeAnalyzerAgent : provides resume to >
+ResumeAnalyzerAgent -- JobSearchAgent : shares skills data >
+ResumeAnalyzerAgent -- CoverLetterGeneratorAgent : provides profile data >
+
+JobSearchAgent -- Job : finds >
+User -- Job : applies to >
+CoverLetterGeneratorAgent -- Job : customized for >
+
+@enduml 

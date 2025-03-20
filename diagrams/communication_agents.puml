@@ -1,0 +1,53 @@
+@startuml Communication and Interview Components
+
+' Main communication agents
+class InterviewCoachAgent {
+  +generate_interview_questions(role): List
+  +evaluate_response(answer): Feedback
+  +provide_tips(): List
+}
+
+class CommunicationAgent {
+  +optimize_linkedin_profile(): Recommendations
+  +create_networking_strategy(): Strategy
+  +generate_communication_templates(): Templates
+}
+
+class CareerChatbotAgent {
+  +get_response(query): Response
+  +understand_context(history): Context
+  +provide_resources(topic): List
+}
+
+' Data models
+class Feedback {
+  -score: Integer
+  -strengths: List
+  -improvements: List
+  -betterResponse: String
+}
+
+class Question {
+  -text: String
+  -type: String
+  -expectedAnswer: String
+}
+
+' User class
+class User {
+  -skills: List
+  -experience: String
+  -careerGoals: String
+}
+
+' Relationships
+User -- InterviewCoachAgent : practices with >
+User -- CommunicationAgent : gets advice from >
+User -- CareerChatbotAgent : asks questions to >
+
+InterviewCoachAgent -- Question : generates >
+InterviewCoachAgent -- Feedback : provides >
+
+CareerChatbotAgent -- CareerNavigatorAgent : gets insights from >
+
+@enduml 

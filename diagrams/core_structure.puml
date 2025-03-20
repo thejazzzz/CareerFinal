@@ -1,0 +1,41 @@
+@startuml Career Assistant Core Structure
+
+' Main components only with minimal details
+abstract class BaseAgent {
+  -role: String
+  -goal: String
+}
+
+class CareerAssistantSystem {
+  -agents: Map<String, BaseAgent>
+}
+
+class User
+class StreamlitInterface
+
+' Agent classes - simplified
+class ResumeAnalyzerAgent extends BaseAgent
+class JobSearchAgent extends BaseAgent
+class SkillsAdvisorAgent extends BaseAgent
+class CareerNavigatorAgent extends BaseAgent
+class InterviewCoachAgent extends BaseAgent
+class CoverLetterGeneratorAgent extends BaseAgent
+class CareerChatbotAgent extends BaseAgent
+class CommunicationAgent extends BaseAgent
+
+' Simplified relationships
+User -- StreamlitInterface : uses >
+StreamlitInterface -- CareerAssistantSystem : connects to >
+CareerAssistantSystem *-- BaseAgent : contains >
+
+' Show core inheritance
+BaseAgent <|-- ResumeAnalyzerAgent
+BaseAgent <|-- JobSearchAgent
+BaseAgent <|-- SkillsAdvisorAgent
+BaseAgent <|-- CareerNavigatorAgent
+BaseAgent <|-- InterviewCoachAgent
+BaseAgent <|-- CoverLetterGeneratorAgent
+BaseAgent <|-- CareerChatbotAgent
+BaseAgent <|-- CommunicationAgent
+
+@enduml 

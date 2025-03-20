@@ -1,0 +1,54 @@
+@startuml Career Development Components
+
+' Main career development agents
+class CareerNavigatorAgent {
+  +build_career_path(): CareerPath
+  +identify_milestones(): List
+  +suggest_next_steps(): List
+}
+
+class SkillsAdvisorAgent {
+  +identify_skill_gaps(): List
+  +recommend_resources(skill): List
+  +suggest_learning_path(): LearningPath
+}
+
+' User and data models
+class User {
+  -currentRole: String
+  -targetRole: String
+  -skills: List
+  -careerGoals: String
+}
+
+class CareerPath {
+  -currentState: String
+  -targetState: String
+  -milestones: List
+  -timeframe: String
+}
+
+class Milestone {
+  -title: String
+  -description: String
+  -requiredSkills: List
+}
+
+class Resource {
+  -title: String
+  -type: String
+  -url: String
+  -skillCategory: String
+}
+
+' Relationships
+User -- CareerNavigatorAgent : provides goals to >
+User -- SkillsAdvisorAgent : seeks advice from >
+
+CareerNavigatorAgent -- CareerPath : creates >
+CareerPath *-- Milestone : contains >
+
+SkillsAdvisorAgent -- Resource : recommends >
+SkillsAdvisorAgent -- CareerNavigatorAgent : collaborates with >
+
+@enduml 

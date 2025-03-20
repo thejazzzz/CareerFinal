@@ -1,0 +1,67 @@
+@startuml UI and System Architecture
+
+' Main system components
+class StreamlitInterface {
+  +render_dashboard()
+  +handle_uploads()
+  +display_results()
+  +manage_user_session()
+}
+
+class CareerAssistantSystem {
+  -agents: Map<String, BaseAgent>
+  +initialize_agents()
+  +process_user_request()
+  +save_user_data()
+}
+
+class User {
+  -userId: String
+  -profile: UserProfile
+}
+
+class UserProfile {
+  -currentRole: String
+  -targetRole: String
+  -skills: List
+  -experience: String
+  -interests: List
+  -careerGoals: String
+}
+
+' Agent interface
+interface BaseAgent {
+  +process()
+  +get_required_fields()
+}
+
+' Agent types (simplified)
+class "Career Agents" as CareerAgents
+note right of CareerAgents
+  Includes:
+  - ResumeAnalyzerAgent
+  - JobSearchAgent
+  - SkillsAdvisorAgent
+  - CareerNavigatorAgent
+end note
+
+class "Communication Agents" as CommunicationAgents
+note right of CommunicationAgents
+  Includes:
+  - InterviewCoachAgent
+  - CommunicationAgent
+  - CareerChatbotAgent
+  - CoverLetterGeneratorAgent
+end note
+
+' Relationships
+User -- StreamlitInterface : interacts with >
+StreamlitInterface -- CareerAssistantSystem : uses >
+
+CareerAssistantSystem o-- BaseAgent : manages >
+BaseAgent <|.. CareerAgents
+BaseAgent <|.. CommunicationAgents
+
+User *-- UserProfile : has >
+
+@enduml 

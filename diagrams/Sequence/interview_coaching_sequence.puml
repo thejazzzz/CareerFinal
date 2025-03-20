@@ -1,0 +1,60 @@
+@startuml Interview Coaching Sequence
+
+actor "User" as user
+participant "Streamlit Interface" as ui
+participant "InterviewCoachAgent" as coachAgent
+participant "DataPersistence" as storage
+
+title Interview Coaching Sequence
+
+user -> ui : Navigate to Interview Coach
+activate ui
+
+ui -> ui : Check User Profile
+alt Profile incomplete
+    ui -> user : Prompt to Complete Profile
+    user -> ui : Complete Profile
+end
+
+ui -> user : Display Interview Setup Form
+user -> ui : Enter Target Role & Interview Type
+ui -> coachAgent : generate_interview_questions(role, type)
+activate coachAgent
+
+coachAgent -> coachAgent : analyze_role_requirements()
+coachAgent -> coachAgent : create_question_set()
+coachAgent -> coachAgent : prepare_expected_answers()
+
+coachAgent --> ui : Return Interview Questions
+deactivate coachAgent
+
+ui -> user : Display Interview Questions
+user -> ui : Provide Answer to Question
+
+ui -> coachAgent : evaluate_response(question, answer)
+activate coachAgent
+coachAgent -> coachAgent : analyze_answer()
+coachAgent -> coachAgent : score_response()
+coachAgent -> coachAgent : identify_strengths()
+coachAgent -> coachAgent : identify_improvements()
+coachAgent -> coachAgent : generate_better_response()
+coachAgent --> ui : Return Feedback
+deactivate coachAgent
+
+ui -> user : Display Answer Feedback
+
+loop Until All Questions Answered
+    user -> ui : Answer Next Question
+    ui -> coachAgent : evaluate_response()
+    coachAgent --> ui : Return Feedback
+    ui -> user : Display Feedback
+end
+
+ui -> user : Show Interview Performance Summary
+ui -> storage : save_interview_session()
+
+ui -> user : Offer to Start New Practice Session
+
+deactivate ui
+
+@enduml 

@@ -1,0 +1,49 @@
+@startuml Chatbot Interaction Sequence
+
+actor "User" as user
+participant "Streamlit Interface" as ui
+participant "CareerChatbotAgent" as chatAgent
+participant "CareerNavigatorAgent" as navAgent
+
+title Career Chatbot Interaction Sequence
+
+user -> ui : Navigate to Career Chatbot
+activate ui
+
+ui -> ui : Initialize Chat History
+ui -> user : Display Chat Interface
+
+user -> ui : Ask Career Question
+ui -> chatAgent : get_response(query, context)
+activate chatAgent
+
+chatAgent -> chatAgent : understand_context()
+chatAgent -> chatAgent : process_query()
+
+alt Complex Career Path Question
+    chatAgent -> navAgent : get_career_insights()
+    navAgent --> chatAgent : Return Career Data
+end
+
+chatAgent -> chatAgent : formulate_response()
+chatAgent -> chatAgent : identify_resources()
+
+chatAgent --> ui : Return Response
+deactivate chatAgent
+
+ui -> ui : Update Chat History
+ui -> user : Display Bot Response
+
+loop Continue Conversation
+    user -> ui : Ask Follow-up Question
+    ui -> chatAgent : get_response(query, updated_context)
+    chatAgent --> ui : Return Response
+    ui -> user : Display Response
+end
+
+user -> ui : Exit Chat
+ui -> ui : Save Chat History
+
+deactivate ui
+
+@enduml 

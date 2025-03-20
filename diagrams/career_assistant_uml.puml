@@ -1,0 +1,165 @@
+@startuml Career Assistant Multi-Agent System
+
+' Base agent class
+abstract class BaseAgent {
+  -role: String
+  -goal: String
+  -backstory: String
+  -verbose: Boolean
+  +process(): void
+  #_log(): void
+  #{abstract} get_required_fields(): List<String>
+}
+
+' User class
+class User {
+  -userId: String
+  -name: String
+  -currentRole: String
+  -targetRole: String
+  -experience: String
+  -skills: List<String>
+  -interests: List<String>
+  -careerGoals: String
+  -resumeData: Map<String, Object>
+}
+
+' Main system class
+class CareerAssistantSystem {
+  -agents: Map<String, BaseAgent>
+  +initialize_agents(): void
+  +process_user_request(): void
+  +save_user_data(): void
+}
+
+' Agent classes
+class ResumeAnalyzerAgent extends BaseAgent {
+  +process_resume(file_path): Map<String, Object>
+  +extract_skills(): List<String>
+  +provide_feedback(): Map<String, Object>
+}
+
+class JobSearchAgent extends BaseAgent {
+  +search_jobs(criteria): List<Job>
+  +filter_results(results): List<Job>
+  +rank_opportunities(jobs): List<Job>
+}
+
+class SkillsAdvisorAgent extends BaseAgent {
+  +identify_skill_gaps(): List<String>
+  +recommend_resources(skill): List<Resource>
+  +suggest_learning_path(): LearningPath
+}
+
+class CareerNavigatorAgent extends BaseAgent {
+  +build_career_path(): CareerPath
+  +identify_milestones(): List<Milestone>
+  +suggest_next_steps(): List<String>
+}
+
+class InterviewCoachAgent extends BaseAgent {
+  +generate_interview_questions(role): List<Question>
+  +evaluate_response(answer): Feedback
+  +provide_tips(): List<String>
+}
+
+class CoverLetterGeneratorAgent extends BaseAgent {
+  +create_cover_letter(job_desc): String
+  +customize_content(template): String
+  +generate_template(): Template
+}
+
+class CareerChatbotAgent extends BaseAgent {
+  +get_response(query): Response
+  +understand_context(history): Context
+  +provide_resources(topic): List<Resource>
+}
+
+class CommunicationAgent extends BaseAgent {
+  +optimize_linkedin_profile(): Recommendations
+  +create_networking_strategy(): Strategy
+  +generate_communication_templates(): Templates
+  +create_social_media_audit(): Audit
+}
+
+' Utility classes for data models
+class Job {
+  -title: String
+  -company: String
+  -description: String
+  -requirements: List<String>
+  -location: String
+  -salary: String
+}
+
+class Resource {
+  -title: String
+  -type: String
+  -url: String
+  -description: String
+  -skillCategory: String
+}
+
+class CareerPath {
+  -currentState: String
+  -targetState: String
+  -milestones: List<Milestone>
+  -timeframe: String
+}
+
+class Milestone {
+  -title: String
+  -description: String
+  -requiredSkills: List<String>
+  -timeframe: String
+}
+
+class Question {
+  -text: String
+  -type: String
+  -expectedAnswer: String
+  -difficulty: String
+}
+
+class Feedback {
+  -score: Integer
+  -strengths: List<String>
+  -improvements: List<String>
+  -betterResponse: String
+  -tips: List<String>
+}
+
+class StreamlitInterface {
+  +render_dashboard(): void
+  +handle_uploads(): File
+  +display_results(): void
+  +manage_user_session(): void
+}
+
+' Relationships
+User "1" -- "1" StreamlitInterface : interacts with >
+StreamlitInterface "1" -- "1" CareerAssistantSystem : connects to >
+
+CareerAssistantSystem "1" *-- "many" BaseAgent : contains >
+
+User "1" -- "many" BaseAgent : uses services of >
+
+ResumeAnalyzerAgent "1" -- "1..*" CoverLetterGeneratorAgent : provides data to >
+ResumeAnalyzerAgent "1" -- "1..*" JobSearchAgent : shares extracted data >
+ResumeAnalyzerAgent "1" -- "1..*" SkillsAdvisorAgent : provides skills data >
+ResumeAnalyzerAgent "1" -- "1..*" CareerNavigatorAgent : provides background >
+
+JobSearchAgent "1" -- "1..*" CareerNavigatorAgent : collaborates with >
+SkillsAdvisorAgent "1" -- "1..*" CareerNavigatorAgent : collaborates with >
+
+CareerChatbotAgent "1" -- "1..*" CareerNavigatorAgent : gets career insights from >
+CommunicationAgent "1" -- "0..*" ResumeAnalyzerAgent : may use data from >
+
+InterviewCoachAgent ..> Job : references >
+SkillsAdvisorAgent ..> Resource : recommends >
+CareerNavigatorAgent ..> CareerPath : creates >
+CareerNavigatorAgent ..> Milestone : defines >
+InterviewCoachAgent ..> Question : generates >
+InterviewCoachAgent ..> Feedback : provides >
+
+@enduml 

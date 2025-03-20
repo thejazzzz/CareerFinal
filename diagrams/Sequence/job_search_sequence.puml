@@ -1,0 +1,57 @@
+@startuml Job Search Sequence
+
+actor "User" as user
+participant "Streamlit Interface" as ui
+participant "JobSearchAgent" as jobAgent
+participant "ResumeAnalyzerAgent" as resumeAgent
+participant "CoverLetterGeneratorAgent" as coverAgent
+
+title Job Search and Application Sequence
+
+user -> ui : Navigate to Job Search Page
+activate ui
+
+ui -> user : Display Job Search Form
+user -> ui : Submit Search Criteria
+ui -> jobAgent : search_jobs(criteria)
+activate jobAgent
+
+jobAgent -> jobAgent : fetch_jobs()
+jobAgent -> jobAgent : filter_results()
+jobAgent -> jobAgent : rank_opportunities()
+
+jobAgent --> ui : Return Job Listings
+deactivate jobAgent
+
+ui -> user : Display Job Results
+deactivate ui
+
+user -> ui : Select Job Listing
+activate ui
+ui -> user : Show Job Details
+
+alt User decides to apply
+    user -> ui : Click "Apply"
+    ui -> resumeAgent : get_user_resume_data()
+    resumeAgent --> ui : Return Resume Data
+
+    ui -> coverAgent : create_cover_letter(job_desc)
+    activate coverAgent
+    coverAgent -> coverAgent : analyze_job_requirements()
+    coverAgent -> coverAgent : match_with_user_skills()
+    coverAgent -> coverAgent : generate_template()
+    coverAgent -> coverAgent : customize_content()
+    coverAgent --> ui : Return Cover Letter
+    deactivate coverAgent
+    
+    ui -> user : Display Cover Letter
+    ui -> user : Display Application Instructions
+else User saves job
+    user -> ui : Click "Save Job"
+    ui -> ui : Add to saved_jobs
+    ui -> user : Confirm Job Saved
+end
+
+deactivate ui
+
+@enduml 

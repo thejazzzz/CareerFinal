@@ -435,7 +435,7 @@ def main():
                         "Career Navigation", 
                         "Get a personalized career roadmap based on your goals and current skills.",
                         "Learn More", 
-                        "/Career_Navigator"
+                        "/6_🧭_Career_Navigator"
                     ), unsafe_allow_html=True)
     
     else:
@@ -451,130 +451,172 @@ def main():
         # Quick actions section
         st.markdown("<h3 style='color: white;'>Quick Actions</h3>", unsafe_allow_html=True)
         
-        cols = st.columns(5)  # Changed from 4 to 5 columns
-        with cols[0]:
-            if st.button("✉️ Create Cover Letter", use_container_width=True):
-                st.switch_page("pages/2_✉️_Cover_Letter_Generator.py")
-        with cols[1]:
-            if st.button("🔍 Search Jobs", use_container_width=True):
-                st.switch_page("pages/4_🔍_Job_Search.py")
-        with cols[2]:
-            if st.button("💬 Career Chat", use_container_width=True):
-                st.switch_page("pages/1_💬_Career_Chatbot.py")
-        with cols[3]:
-            if st.button("🎯 Update Skills", use_container_width=True):
-                st.switch_page("pages/5_📚_Skills_Development.py")
-        with cols[4]:
-            # Note: Resume Analyzer page is currently hidden
-            if st.button("📝 Resume Analysis", use_container_width=True):
-                try:
-                    # First try with underscore prefix
-                    st.switch_page("pages/_3_📝_Resume_Analyzer.py")
-                except Exception as e:
-                    st.error("Resume Analyzer page is not available. Please contact support.")
-                    print(f"Error switching to Resume Analyzer page: {str(e)}")
+        # Add CSS for consistent button styling
+        st.markdown("""
+        <style>
+        div[data-testid="column"] {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: stretch;
+        }
         
-        # Resume Update section
-        st.markdown("<h3 style='color: white;'>Update Your Resume</h3>", unsafe_allow_html=True)
-        st.markdown("<p style='color: #e2e8f0;'>Keep your profile up-to-date by uploading a new resume. We'll analyze it and update your skills and experience.</p>", unsafe_allow_html=True)
+        div[data-testid="column"] > div {
+            width: 100%;
+        }
         
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            new_resume = resume_upload_area(st.file_uploader)
+        div[data-testid="column"] button {
+            width: 100% !important;
+            min-height: 45px !important;
+            height: 100% !important;
+            white-space: nowrap !important;
+            padding: 10px 15px !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            background-color: #3B82F6 !important;
+            border: none !important;
+            border-radius: 6px !important;
+            color: white !important;
+            font-size: 14px !important;
+            line-height: 1.2 !important;
+            margin: 0 !important;
+            transition: background-color 0.2s ease !important;
+        }
+        
+        div[data-testid="column"] button:hover {
+            background-color: #2563EB !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # Create columns with equal width
+        cols = st.columns(5)
+        
+        # Define button configurations
+        buttons = [
+            ("✉️ Cover Letter", "pages/2_✉️_Cover_Letter_Generator.py"),
+            ("🔍 Search Jobs", "pages/4_🔍_Job_Search.py"),
+            ("💬 Career Chat", "pages/1_💬_Career_Chatbot.py"),
+            ("🎯 Update Skills", "pages/5_📚_Skills_Development.py"),
+            ("🎤 Interview Coach", "pages/7_🎤_Interview_Coach.py")
+        ]
+        
+        # Create buttons in columns
+        for i, (label, page) in enumerate(buttons):
+            with cols[i]:
+                if st.button(label, use_container_width=True, key=f"quick_{i}"):
+                    st.switch_page(page)
+        
+        # Career Navigation section
+        st.markdown("<h3 style='color: white;'>Career Navigation</h3>", unsafe_allow_html=True)
+        st.markdown("<p style='color: #e2e8f0;'>Your personalized career roadmap based on your skills and goals.</p>", unsafe_allow_html=True)
+        
+        # Check if career path data exists
+        if st.session_state.get("career_path"):
+            career_path = st.session_state.career_path
             
-            if new_resume:
-                with st.spinner("Analyzing your updated resume..."):
-                    # Save uploaded file temporarily
-                    temp_path = f"temp_{new_resume.name}"
-                    with open(temp_path, "wb") as f:
-                        f.write(new_resume.getvalue())
-                    
-                    try:
-                        # Analyze resume
-                        analyzer = agents["resume_analyzer"]
-                        analysis = analyzer.process_resume(temp_path)
-                        
-                        # Extract and update skills and experience
-                        extracted_skills = analysis["structured_data"].get("skills", [])
-                        skills_list = [skill['name'] for skill in extracted_skills]
-                        
-                        extracted_experience = next(
-                            (exp for exp in analysis["structured_data"].get("work_experience", [])
-                            if "years" in exp.lower()),
-                            ""
-                        )
-                        
-                        # Update session state
-                        st.session_state.resume_analysis = analysis
-                        st.session_state.user_context["skills"] = skills_list
-                        
-                        if extracted_experience:
-                            st.session_state.user_context["experience"] = extracted_experience
-                        
-                        # Ensure user has a unique ID
-                        if "user_id" not in st.session_state.user_context:
-                            import uuid
-                            st.session_state.user_context["user_id"] = str(uuid.uuid4())
-                            print(f"Generated new user ID from resume upload: {st.session_state.user_context['user_id']}")
-                        
-                        # Save updated state
-                        save_success = save_current_state()
-                        
-                        # Log activity
-                        update_user_activity("profile", "Updated resume and skills")
-                        
-                        if save_success:
-                            st.success("✅ Resume updated! Your profile has been refreshed with the latest information and saved to the database.")
-                            print("Resume data saved successfully to database")
-                        else:
-                            st.warning("✅ Resume updated! Your profile has been refreshed, but there was an issue saving to the database.")
-                            print("Failed to save resume data to database")
-                        
-                    except Exception as e:
-                        st.error(f"Error analyzing resume: {str(e)}")
-                    
-                    finally:
-                        # Cleanup temporary file
-                        if os.path.exists(temp_path):
-                            os.remove(temp_path)
-        
-        # Recent activity (removing duplicate learning path display here)
-        st.markdown("<h3 style='color: white;'>Recent Activity</h3>", unsafe_allow_html=True)
-        
-        if st.session_state.user_context.get("activities"):
-            # Create a styled activity list
+            # Create a styled container for the career path
             st.markdown("""
             <div style="
                 background-color: #2d3748;
                 border-radius: 12px;
-                padding: 1rem;
+                padding: 1.5rem;
                 margin-bottom: 1.5rem;
                 border: 1px solid #4a5568;
+                cursor: pointer;
             ">
             """, unsafe_allow_html=True)
             
-            for i, activity in enumerate(st.session_state.user_context["activities"][:5]):  # Show last 5 activities
-                activity_type = activity["type"]
-                description = activity["description"]
-                date = activity["date"]
+            # Display career path content
+            if isinstance(career_path, dict):
+                # If it's a structured career path
+                if "current_state" in career_path:
+                    st.markdown(f"""
+                    <div style="margin-bottom: 1rem;">
+                        <h4 style="color: white; margin-bottom: 0.5rem;">Current State</h4>
+                        <p style="color: #e2e8f0;">{career_path["current_state"]}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
                 
+                if "target_state" in career_path:
+                    st.markdown(f"""
+                    <div style="margin-bottom: 1rem;">
+                        <h4 style="color: white; margin-bottom: 0.5rem;">Target State</h4>
+                        <p style="color: #e2e8f0;">{career_path["target_state"]}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                if "milestones" in career_path and career_path["milestones"]:
+                    st.markdown("""
+                    <h4 style="color: white; margin-bottom: 0.5rem;">Milestones</h4>
+                    """, unsafe_allow_html=True)
+                    
+                    # Show only first 2 milestones on main page
+                    show_milestones = career_path["milestones"][:2]
+                    for i, milestone in enumerate(show_milestones):
+                        st.markdown(f"""
+                        <div style="
+                            background-color: #3c4758;
+                            border-radius: 8px;
+                            padding: 1rem;
+                            margin-bottom: 0.75rem;
+                            border-left: 3px solid #4299e1;
+                        ">
+                            <p style="color: white; font-weight: 600;">{milestone.get('title', f'Milestone {i+1}')}</p>
+                            <p style="color: #e2e8f0;">{milestone.get('description', '')}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    # If there are more milestones, add a note
+                    if len(career_path["milestones"]) > 2:
+                        st.markdown(f"""
+                        <div style="text-align: center; margin-top: 0.5rem; margin-bottom: 0.5rem;">
+                            <p style="color: #a0aec0;">+ {len(career_path["milestones"]) - 2} more milestones</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    # Add a View Details button styled to match the container
+                    st.markdown("""
+                    <div style="text-align: center; margin-top: 1rem;">
+                        <a href="6_🧭_Career_Navigator" style="text-decoration: none;">
+                            <div style="
+                                display: inline-block;
+                                background-color: #3B82F6;
+                                color: white;
+                                font-weight: 500;
+                                padding: 0.5rem 1rem;
+                                border-radius: 0.375rem;
+                                cursor: pointer;
+                                text-align: center;
+                                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+                            ">View Full Details</div>
+                        </a>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                # If it's just text content
                 st.markdown(f"""
-                <div style="display: flex; justify-content: space-between; padding: 0.5rem 0;">
-                    <div>
-                        <strong style="color: white;">{activity_type.title()}</strong>: <span style="color: #e2e8f0;">{description}</span>
-                    </div>
-                    <div>
-                        <span style="color: #a0aec0; font-size: 0.875rem;">{date}</span>
-                    </div>
+                <div style="color: #e2e8f0;">
+                    {career_path}
                 </div>
                 """, unsafe_allow_html=True)
-                
-                if i < len(st.session_state.user_context["activities"][:5]) - 1:
-                    st.markdown('<hr style="margin: 0.5rem 0; border: 0; border-top: 1px solid #4a5568;">', unsafe_allow_html=True)
             
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+            
+            # Add button to navigate to full career navigator
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                if st.button("View Full Career Roadmap", use_container_width=True):
+                    st.switch_page("pages/6_🧭_Career_Navigator.py")
         else:
-            st.info("No recent activity yet. Start using the platform to track your progress!")
+            # If no career path data exists yet
+            st.info("You haven't created a career roadmap yet. Go to Career Navigator to create one!")
+            
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                if st.button("Create Career Roadmap", use_container_width=True):
+                    st.switch_page("pages/6_🧭_Career_Navigator.py")
 
 # Footer
 st.sidebar.markdown("---")
