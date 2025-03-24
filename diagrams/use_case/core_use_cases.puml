@@ -1,0 +1,80 @@
+@startuml Career Project Core Use Cases
+
+skinparam actorStyle awesome
+skinparam usecase {
+    BackgroundColor<<Core>> LightBlue
+    BorderColor<<Core>> DarkBlue
+    BackgroundColor<<Optional>> LightGray
+    BorderColor<<Optional>> Gray
+}
+
+' Actors
+actor "User" as user
+actor "AI System" as ai
+
+rectangle "Career Project System" {
+    ' Core Use Cases
+    usecase "Create Career Plan" as UC1 <<Core>>
+    usecase "Search Job Listings" as UC2 <<Core>>
+    usecase "Generate Networking Strategy" as UC3 <<Core>>
+    usecase "View Career Path Analysis" as UC4 <<Core>>
+    usecase "Save Career Plans" as UC5 <<Core>>
+    usecase "Prepare for Interviews" as UC6 <<Core>>
+    usecase "Get Interview Feedback" as UC7 <<Core>>
+    
+    ' Relationships between use cases
+    UC1 ..> UC4 : includes
+    UC1 ..> UC5 : extends
+    UC6 ..> UC7 : includes
+    UC2 ..> UC6 : extends
+    
+    ' User interactions
+    user --> UC1
+    user --> UC2
+    user --> UC3
+    user --> UC4
+    user --> UC5
+    user --> UC6
+    user --> UC7
+    
+    ' AI System interactions
+    UC1 <-- ai
+    UC2 <-- ai
+    UC3 <-- ai
+    UC4 <-- ai
+    UC6 <-- ai
+    UC7 <-- ai
+}
+
+' Notes for clarity
+note right of UC1
+  Creates personalized career 
+  development plans based on
+  user profile and goals
+end note
+
+note right of UC2
+  Searches and filters relevant
+  job listings from various
+  sources
+end note
+
+note right of UC3
+  Generates professional
+  networking strategies and
+  recommendations
+end note
+
+note right of UC6
+  Provides interview preparation
+  guidance and practice questions
+  based on job role
+end note
+
+note right of UC7
+  Offers personalized feedback
+  on interview responses and
+  improvement suggestions
+end note
+
+@enduml 

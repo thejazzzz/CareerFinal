@@ -59,6 +59,8 @@ class CareerNavigatorAgent(BaseAgent):
             Recommended Certifications:
             - [Relevant certification 1]
             - [Relevant certification 2]
+            
+            IMPORTANT: Do not use any HTML formatting or tags (like <p>, <div>, etc.) in your response. Provide plain text only.
             """
         )
         

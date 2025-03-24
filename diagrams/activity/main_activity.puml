@@ -1,0 +1,69 @@
+@startuml Career Project Main Activity Flow
+
+skinparam ActivityBackgroundColor LightBlue
+skinparam ActivityBorderColor DarkBlue
+skinparam ArrowColor DarkBlue
+skinparam ActivityDiamondBackgroundColor LightYellow
+
+|User|
+start
+:Complete User Profile;
+
+|System|
+:Initialize AI Agents;
+
+|User|
+:Select Action;
+
+|System|
+if (Action Type?) then (Career Planning)
+  :Create Career Plan;
+  :Generate Career Path Analysis;
+  :Display Career Options;
+  
+  |User|
+  :Review Career Paths;
+  if (Save Plan?) then (yes)
+    :Save to Profile;
+  else (no)
+  endif
+  
+else if (Job Search) then
+  |System|
+  :Search Job Listings;
+  :Filter Relevant Positions;
+  
+  |User|
+  :View Job Listings;
+  if (Prepare for Interview?) then (yes)
+    |System|
+    :Activate Interview Coach;
+    :Generate Practice Questions;
+    
+    |User|
+    :Practice Interview;
+    
+    |System|
+    :Provide Interview Feedback;
+  else (no)
+  endif
+  
+else (Networking)
+  |System|
+  :Generate Networking Strategy;
+  :Create Connection Recommendations;
+  
+  |User|
+  :Review Strategy;
+  :Implement Networking Plan;
+endif
+
+|User|
+:Update Progress;
+
+|System|
+:Save Activities to Profile;
+
+stop
+
+@enduml 

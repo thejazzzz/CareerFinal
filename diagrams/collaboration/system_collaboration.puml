@@ -1,0 +1,66 @@
+@startuml Career Project Collaboration Diagram
+
+' Enhanced layout directives to prevent overlapping
+skinparam linetype ortho
+left to right direction
+skinparam nodesep 120
+skinparam ranksep 100
+skinparam messageAlignment center
+skinparam wrapWidth 200
+skinparam defaultTextAlignment center
+
+' Object definitions with positioning
+object "User Interface" as ui
+object "Career Navigator" as navigator
+object "Job Searcher" as jobSearch
+object "Interview Coach" as interview
+object "Networking Agent" as network
+object "Data Storage" as storage
+
+' Horizontal arrangement
+ui -right[hidden]-> navigator
+navigator -right[hidden]-> jobSearch
+jobSearch -right[hidden]-> interview
+interview -right[hidden]-> network
+
+' Storage placement
+ui -down[hidden]-> storage
+
+' Links and interactions with adjusted message placement
+ui -- navigator : "1. sends user profile data >"
+navigator -- ui : "2. returns career paths <"
+
+ui -- jobSearch : "3. sends search parameters >"
+jobSearch -- ui : "4. returns job listings <"
+
+ui -- interview : "5. sends job role >"
+interview -- ui : "6. returns practice questions <"
+ui -- interview : "7. provides feedback <"
+
+ui -- network : "8. sends networking goals >"
+network -- ui : "9. returns networking strategy <"
+
+navigator -- storage : "a. stores career plans >"
+storage -- navigator : "b. retrieves saved plans <"
+
+jobSearch -- storage : "c. records job interests >"
+storage -- jobSearch : "d. retrieves search history <"
+
+interview -- storage : "e. stores practice results >"
+storage -- interview : "f. retrieves previous feedback <"
+
+network -- storage : "g. stores networking plans >"
+storage -- network : "h. retrieves connection history <"
+
+note bottom of ui
+  The UI serves as the central point of 
+  interaction connecting the user with 
+  all system components
+end note
+
+note top of storage
+  Central repository storing 
+  user data and system interactions
+end note
+
+@enduml 

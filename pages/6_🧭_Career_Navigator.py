@@ -1,6 +1,27 @@
 import streamlit as st
 from agents.career_navigator import CareerNavigatorAgent
 from datetime import datetime
+import re
+
+# Utility function to clean HTML tags
+def clean_html_tags(text):
+    if not text or not isinstance(text, str):
+        return text
+        
+    if "<" in text and ">" in text:
+        # First get content from paragraph tags if present
+        p_content = re.findall(r'<p[^>]*>(.*?)</p>', text)
+        if p_content:
+            # Join all paragraph contents with line breaks
+            cleaned_text = "\n".join([content.strip() for content in p_content])
+        else:
+            # If no p tags found, just remove all HTML tags
+            cleaned_text = re.sub(r'<[^>]*>', '', text)
+        # Clean up extra whitespace
+        cleaned_text = re.sub(r'\s+', ' ', cleaned_text).strip()
+        return cleaned_text
+    
+    return text
 
 # Initialize the career navigator agent
 @st.cache_resource
@@ -90,11 +111,7 @@ def main():
                             title = ""
                     
                     # Remove any HTML tags from milestone description if present
-                    clean_description = milestone_description
-                    if "<p" in clean_description and "</p>" in clean_description:
-                        # Extract text between HTML tags
-                        import re
-                        clean_description = re.sub(r'<[^>]*>', '', clean_description)
+                    clean_description = clean_html_tags(milestone_description)
                     
                     # Display as styled divs similar to app.py
                     st.markdown(f"""
@@ -120,7 +137,14 @@ def main():
                 path_options = structured_data.get("path_options", [])
                 if path_options and path_options[0] != "Career path information not available":
                     for i, path in enumerate(path_options, 1):
-                        st.subheader(f"Path {i}: {path}")
+                        # Remove any "Path X:" prefix that might already exist in the path string
+                        if "Path" in path and ":" in path:
+                            # Extract just the content after "Path X:"
+                            clean_path = path.split(":", 1)[1].strip()
+                        else:
+                            clean_path = path
+                        
+                        st.subheader(f"Path {i}: {clean_path}")
                 
                 # Display challenges and solutions
                 challenges = structured_data.get("challenges", [])
@@ -292,6 +316,9 @@ def main():
                     else:
                         milestone_description = milestone
                     
+                    # Clean any HTML tags that might be in the description with a more thorough approach
+                    milestone_description = clean_html_tags(milestone_description)
+                    
                     formatted_career_path["milestones"].append({
                         "title": milestone_title,
                         "description": milestone_description
@@ -302,7 +329,6 @@ def main():
                 
                 # Add an activity record
                 if "user_context" in st.session_state and "activities" in st.session_state.user_context:
-                    from datetime import datetime
                     st.session_state.user_context["activities"].insert(0, {
                         "type": "Career Plan",
                         "description": f"Created career plan for {industry}",

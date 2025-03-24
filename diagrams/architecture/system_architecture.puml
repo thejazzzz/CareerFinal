@@ -1,0 +1,113 @@
+@startuml Career Project Architecture
+
+!define RECTANGLE class
+
+' Custom styles
+skinparam rectangle {
+    BackgroundColor<<Frontend>> LightBlue
+    BorderColor<<Frontend>> DarkBlue
+    BackgroundColor<<Backend>> LightGreen
+    BorderColor<<Backend>> DarkGreen
+    BackgroundColor<<Database>> LightYellow
+    BorderColor<<Database>> Orange
+    BackgroundColor<<External>> LightGray
+    BorderColor<<External>> Gray
+}
+
+skinparam linetype ortho
+skinparam nodesep 70
+skinparam ranksep 50
+
+' Title
+title Career Project - System Architecture
+
+' Layers
+rectangle "Presentation Layer" <<Frontend>> {
+    rectangle "Streamlit UI" as ui {
+        component "Career Navigator Page" as navPage
+        component "Job Search Page" as jobPage
+        component "Interview Coach Page" as interviewPage
+        component "Networking Page" as networkPage
+        component "Profile Management" as profilePage
+    }
+}
+
+rectangle "Application Layer" <<Backend>> {
+    rectangle "AI Agents" as agents {
+        component "Career Navigator Agent" as navAgent
+        component "Job Search Agent" as jobAgent
+        component "Interview Coach Agent" as interviewAgent
+        component "Networking Agent" as networkAgent
+    }
+    
+    rectangle "Core Services" as services {
+        component "User Profile Service" as profileService
+        component "Authentication Service" as authService
+        component "Data Processing Service" as dataService
+    }
+}
+
+rectangle "Data Layer" <<Database>> {
+    database "User Profiles" as userDB
+    database "Career Plans" as careerDB
+    database "Job History" as jobDB
+    database "Interview Data" as interviewDB
+}
+
+rectangle "External Services" <<External>> {
+    [Job APIs] as jobAPI
+    [LLM Services] as llmAPI
+    [Authentication Provider] as authProvider
+}
+
+' Connections
+' UI to Agents
+navPage --> navAgent
+jobPage --> jobAgent
+interviewPage --> interviewAgent
+networkPage --> networkAgent
+profilePage --> profileService
+
+' Agents to Services
+navAgent --> dataService
+jobAgent --> dataService
+interviewAgent --> dataService
+networkAgent --> dataService
+
+' Services to Database
+profileService --> userDB
+dataService --> careerDB
+dataService --> jobDB
+dataService --> interviewDB
+
+' External Connections
+jobAgent --> jobAPI : "Job Search"
+agents --> llmAPI : "AI Processing"
+authService --> authProvider : "Authentication"
+
+' Notes
+note right of ui
+  Streamlit-based user interface
+  providing access to all system
+  functionalities
+end note
+
+note right of agents
+  AI-powered agents using LLM
+  for specialized career guidance
+  and job search functions
+end note
+
+note right of services
+  Core services handling data
+  processing, user management,
+  and system operations
+end note
+
+note right of userDB
+  Persistent storage for
+  user data and system
+  interactions
+end note
+
+@enduml 
