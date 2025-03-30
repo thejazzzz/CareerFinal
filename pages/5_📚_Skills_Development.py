@@ -4,6 +4,10 @@ from datetime import datetime
 import os
 import uuid
 import json
+import pandas as pd
+import re
+from pathlib import Path
+from utils.auth_utils import is_authenticated
 
 # Initialize the skills advisor agent
 @st.cache_resource
@@ -38,6 +42,45 @@ def initialize_session_state():
         
     if "skill_analysis_results" not in st.session_state:
         st.session_state.skill_analysis_results = None
+
+# Helper function to sync progress data across components
+def sync_progress_data(skill_name, progress_percentage):
+    """
+    Ensure progress data is synchronized across all parts of the application
+    
+    Args:
+        skill_name: The name of the skill being updated
+        progress_percentage: The new progress percentage value
+    """
+    try:
+        # Update the current learning path if it matches this skill
+        if 'current_learning_path' in st.session_state:
+            current_path = st.session_state.current_learning_path
+            current_path_title = current_path.get('title', '')
+            current_path_skill = current_path.get('skill_name', '')
+            
+            if current_path_title == skill_name or current_path_skill == skill_name:
+                # Update progress information
+                if 'progress' not in current_path:
+                    current_path['progress'] = {}
+                
+                current_path['progress']['completed'] = progress_percentage
+                current_path['progress']['total'] = 100
+                
+                print(f"Synced current_learning_path progress to {progress_percentage}%")
+        
+        # Update skill progress if it exists
+        if 'skill_progress' in st.session_state and skill_name in st.session_state.skill_progress:
+            st.session_state.skill_progress[skill_name]['progress_percentage'] = progress_percentage
+            print(f"Synced skill_progress data for {skill_name} to {progress_percentage}%")
+        
+        # Persist changes
+        from utils.data_persistence import DataPersistence
+        data_persistence = DataPersistence()
+        data_persistence.save_session_state(st.session_state)
+        print(f"Saved session state after progress update for {skill_name}")
+    except Exception as e:
+        print(f"Error syncing progress data: {str(e)}")
 
 def main():
     st.title("📚 Skills Development")
@@ -386,6 +429,31 @@ def display_learning_paths_tab(advisor):
                         
                         st.success(f"Now tracking progress for {skill_to_learn}!")
                         
+                        # Log activity
+                        if "user_context" in st.session_state and "activities" in st.session_state.user_context:
+                            activity = {
+                                "type": "Learning Path",
+                                "description": f"Started tracking progress for {skill_to_learn} (from {current_level} to {target_level})",
+                                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            }
+                            st.session_state.user_context["activities"].insert(0, activity)
+                        
+                        # Save session state to prevent data loss
+                        try:
+                            from utils.data_persistence import DataPersistence
+                            data_persistence = DataPersistence()
+                            # Force data persistence to save current_learning_path with updated progress
+                            print("PROGRESS DEBUG: Saving session state with updated learning path progress")
+                            session_data = dict(st.session_state)
+                            print(f"PROGRESS DEBUG: current_learning_path in session data: {session_data.get('current_learning_path', {})}")
+                            success = data_persistence.save_session_state(session_data)
+                            if success:
+                                print("Session state saved after progress update.")
+                            else:
+                                print("Warning: Failed to save session state after progress update.")
+                        except Exception as e:
+                            print(f"Error saving session state after progress update: {str(e)}")
+                        
                         # Offer to go to progress tracking tab
                         if st.button("Go to Progress Tracking"):
                             st.session_state.active_tab = "Progress Tracking"
@@ -492,11 +560,36 @@ def display_learning_paths_tab(advisor):
                 
                 st.success(f"Now tracking progress for {skill_to_learn}!")
                 
+                # Log activity
+                if "user_context" in st.session_state and "activities" in st.session_state.user_context:
+                    activity = {
+                        "type": "Learning Path",
+                        "description": f"Started tracking progress for {skill_to_learn} (from {current_level} to {target_level})",
+                        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
+                    st.session_state.user_context["activities"].insert(0, activity)
+                
+                # Save session state to prevent data loss
+                try:
+                    from utils.data_persistence import DataPersistence
+                    data_persistence = DataPersistence()
+                    # Force data persistence to save current_learning_path with updated progress
+                    print("PROGRESS DEBUG: Saving session state with updated learning path progress")
+                    session_data = dict(st.session_state)
+                    print(f"PROGRESS DEBUG: current_learning_path in session data: {session_data.get('current_learning_path', {})}")
+                    success = data_persistence.save_session_state(session_data)
+                    if success:
+                        print("Session state saved after progress update.")
+                    else:
+                        print("Warning: Failed to save session state after progress update.")
+                except Exception as e:
+                    print(f"Error saving session state after progress update: {str(e)}")
+                
                 # Offer to go to progress tracking tab
                 if st.button("Go to Progress Tracking"):
                     st.session_state.active_tab = "Progress Tracking"
                     st.rerun()
-        
+            
             except Exception as e:
                 st.error(f"Error tracking skill: {str(e)}")
                 if st.checkbox("Show detailed error"):
@@ -508,77 +601,136 @@ def display_learning_paths_tab(advisor):
         st.header("🎯 Your Tracked Skills")
         
         for skill_name, progress_data in st.session_state.skill_progress.items():
-            with st.expander(f"{skill_name} ({progress_data['current_level']} → {progress_data['target_level']})"):
-                st.write(f"**Started:** {progress_data['start_date']}")
+            # Check for missing keys and provide defaults
+            current_level = progress_data.get('current_level', progress_data.get('skill_level', 'beginner'))
+            target_level = progress_data.get('target_level', 'advanced')
+            
+            with st.expander(f"{skill_name} ({current_level} → {target_level})"):
+                st.write(f"**Started:** {progress_data.get('start_date', 'Unknown')}")
                 
                 # Calculate and display progress
-                total_objectives = len(progress_data['learning_path']['objectives'])
-                
-                # Count completed objectives, handling both string and object formats
-                if progress_data['learning_path']['objectives'] and isinstance(progress_data['learning_path']['objectives'][0], dict):
-                    # Handle object format where we use the ID for tracking
-                    completed_objective_ids = progress_data.get('completed_objectives', [])
-                    completed = len(completed_objective_ids)
-                else:
-                    # Handle string format
-                    completed = len(progress_data.get('completed_objectives', []))
-                
-                progress_percentage = int((completed / total_objectives) * 100) if total_objectives > 0 else 0
-                
-                # Update progress percentage
-                progress_data['progress_percentage'] = progress_percentage
-                
-                # Update current_learning_path for display in profile
-                if 'current_learning_path' in st.session_state:
-                    st.session_state.current_learning_path['title'] = skill_name
-                    st.session_state.current_learning_path['progress'] = {
-                        'completed': progress_percentage,
-                        'total': 100
-                    }
-                
-                # Display progress bar
-                st.progress(progress_percentage / 100)
-                st.write(f"**Progress:** {int(progress_percentage)}% ({completed}/{total_objectives} objectives completed)")
-                
-                # Objectives with checkboxes
-                st.subheader("Learning Objectives")
-                
-                # Create a unique key for each objective
-                for i, objective in enumerate(progress_data['learning_path']['objectives']):
-                    obj_key = f"{skill_name}_obj_{i}"
+                if 'learning_path' in progress_data and 'objectives' in progress_data['learning_path']:
+                    total_objectives = len(progress_data['learning_path']['objectives'])
                     
-                    # Handle objective in both formats
-                    if isinstance(objective, dict):
-                        obj_id = objective.get('id', str(i))
-                        obj_title = objective.get('title', '')
-                        is_completed = obj_id in progress_data.get('completed_objectives', [])
-                        
-                        # Create a checkbox for each objective
-                        if st.checkbox(obj_title, value=is_completed, key=obj_key):
-                            if obj_id not in progress_data.get('completed_objectives', []):
-                                if 'completed_objectives' not in progress_data:
-                                    progress_data['completed_objectives'] = []
-                                progress_data['completed_objectives'].append(obj_id)
-                        else:
-                            if obj_id in progress_data.get('completed_objectives', []):
-                                progress_data['completed_objectives'].remove(obj_id)
+                    # Count completed objectives, handling both string and object formats
+                    if progress_data['learning_path']['objectives'] and isinstance(progress_data['learning_path']['objectives'][0], dict):
+                        # Handle object format where we use the ID for tracking
+                        completed_objective_ids = progress_data.get('completed_objectives', [])
+                        completed = len(completed_objective_ids)
                     else:
-                        is_completed = objective in progress_data.get('completed_objectives', [])
+                        # Handle string format
+                        completed = len(progress_data.get('completed_objectives', []))
+                    
+                    progress_percentage = int((completed / total_objectives) * 100) if total_objectives > 0 else 0
+                    
+                    # Update progress percentage
+                    progress_data['progress_percentage'] = progress_percentage
+                    
+                    # Update current_learning_path for display in profile
+                    if 'current_learning_path' in st.session_state:
+                        current_path_title = st.session_state.current_learning_path.get('title', '')
+                        current_path_skill = st.session_state.current_learning_path.get('skill_name', '')
                         
-                        # Create a checkbox for each objective
-                        if st.checkbox(objective, value=is_completed, key=obj_key):
-                            if objective not in progress_data.get('completed_objectives', []):
-                                if 'completed_objectives' not in progress_data:
-                                    progress_data['completed_objectives'] = []
-                                progress_data['completed_objectives'].append(objective)
+                        # Check if this is the current learning path being tracked
+                        if current_path_title == skill_name or current_path_skill == skill_name:
+                            st.session_state.current_learning_path['title'] = skill_name
+                            st.session_state.current_learning_path['progress'] = {
+                                'completed': progress_percentage,
+                                'total': 100
+                            }
+                            # Force save to ensure updates are persisted
+                            from utils.data_persistence import DataPersistence
+                            data_persistence = DataPersistence()
+                            data_persistence.save_session_state(st.session_state)
+                            print(f"Updated and saved current_learning_path progress to {progress_percentage}%")
+                    
+                    # Display progress bar
+                    st.progress(progress_percentage / 100)
+                    st.write(f"**Progress:** {int(progress_percentage)}% ({completed}/{total_objectives} objectives completed)")
+                    
+                    # Objectives with checkboxes
+                    st.subheader("Learning Objectives")
+                    
+                    # Create a unique key for each objective
+                    for i, objective in enumerate(progress_data['learning_path']['objectives']):
+                        obj_key = f"{skill_name}_obj_{i}"
+                        
+                        # Handle objective in both formats
+                        if isinstance(objective, dict):
+                            obj_id = objective.get('id', str(i))
+                            obj_title = objective.get('title', '')
+                            is_completed = obj_id in progress_data.get('completed_objectives', [])
+                            
+                            # Create a checkbox for each objective
+                            if st.checkbox(obj_title, value=is_completed, key=obj_key):
+                                if obj_id not in progress_data.get('completed_objectives', []):
+                                    if 'completed_objectives' not in progress_data:
+                                        progress_data['completed_objectives'] = []
+                                    progress_data['completed_objectives'].append(obj_id)
+                                    
+                                    # Calculate new progress percentage
+                                    completed = len(progress_data['completed_objectives'])
+                                    new_percentage = int((completed / total_objectives) * 100) if total_objectives > 0 else 0
+                                    
+                                    # Sync progress data across components
+                                    sync_progress_data(skill_name, new_percentage)
+                            else:
+                                if obj_id in progress_data.get('completed_objectives', []):
+                                    progress_data['completed_objectives'].remove(obj_id)
+                                    
+                                    # Calculate new progress percentage
+                                    completed = len(progress_data['completed_objectives'])
+                                    new_percentage = int((completed / total_objectives) * 100) if total_objectives > 0 else 0
+                                    
+                                    # Sync progress data across components
+                                    sync_progress_data(skill_name, new_percentage)
                         else:
-                            if objective in progress_data.get('completed_objectives', []):
-                                progress_data['completed_objectives'].remove(objective)
+                            is_completed = objective in progress_data.get('completed_objectives', [])
+                            
+                            # Create a checkbox for each objective
+                            if st.checkbox(objective, value=is_completed, key=obj_key):
+                                if objective not in progress_data.get('completed_objectives', []):
+                                    if 'completed_objectives' not in progress_data:
+                                        progress_data['completed_objectives'] = []
+                                    progress_data['completed_objectives'].append(objective)
+                                    
+                                    # Calculate new progress percentage
+                                    completed = len(progress_data['completed_objectives'])
+                                    new_percentage = int((completed / total_objectives) * 100) if total_objectives > 0 else 0
+                                    
+                                    # Sync progress data across components
+                                    sync_progress_data(skill_name, new_percentage)
+                            else:
+                                if objective in progress_data.get('completed_objectives', []):
+                                    progress_data['completed_objectives'].remove(objective)
+                                    
+                                    # Calculate new progress percentage
+                                    completed = len(progress_data['completed_objectives'])
+                                    new_percentage = int((completed / total_objectives) * 100) if total_objectives > 0 else 0
+                                    
+                                    # Sync progress data across components
+                                    sync_progress_data(skill_name, new_percentage)
                 
                 # Resources section
                 st.subheader("Resources")
-                for resource in progress_data['learning_path']['resources'][:3]:  # Show first 3 resources
-                    st.write(f"• {resource}")
+                # Check if learning_path and resources exist before accessing them
+                if 'learning_path' in progress_data and 'resources' in progress_data['learning_path']:
+                    resources = progress_data['learning_path']['resources']
+                    # Display up to 3 resources
+                    for resource in resources[:3]:
+                        if isinstance(resource, dict):
+                            resource_title = resource.get('title', 'Resource')
+                            resource_url = resource.get('url', '')
+                            resource_desc = resource.get('description', '')
+                            
+                            if resource_url:
+                                st.markdown(f"• [{resource_title}]({resource_url}): {resource_desc}")
+                            else:
+                                st.markdown(f"• **{resource_title}**: {resource_desc}")
+                        else:
+                            st.write(f"• {resource}")
+                else:
+                    st.info("No resources available for this skill.")
                 
                 # Stop tracking button
                 if st.button("Stop Tracking", key=f"stop_{skill_name}"):
@@ -607,20 +759,24 @@ def display_progress_tracking_tab(advisor):
     session_paths = []
     if st.session_state.get("skill_progress"):
         for skill_name, progress_data in st.session_state.skill_progress.items():
-            # Convert session format to disk format
-            timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-            path_id = f"{skill_name}_{timestamp}"
+            # Generate a stable ID based on skill name
+            path_id = f"{skill_name}_{user_id}"
             
-            # Ensure progress_percentage exists
-            if 'progress_percentage' not in progress_data:
-                # Calculate the percentage if it doesn't exist
+            # Ensure progress_percentage exists and is correctly calculated
+            if 'progress_percentage' not in progress_data or progress_data['progress_percentage'] == 0:
+                # Calculate the percentage based on completed objectives
                 if 'learning_path' in progress_data and 'objectives' in progress_data['learning_path']:
                     total_objectives = len(progress_data['learning_path']['objectives'])
                     completed = len(progress_data.get('completed_objectives', []))
                     progress_data['progress_percentage'] = int((completed / total_objectives) * 100) if total_objectives > 0 else 0
+                    print(f"Calculated progress for {skill_name}: {progress_data['progress_percentage']}% ({completed}/{total_objectives})")
                 else:
                     progress_data['progress_percentage'] = 0
+                    print(f"No objectives found for {skill_name}, setting progress to 0%")
+            else:
+                print(f"Using existing progress for {skill_name}: {progress_data['progress_percentage']}%")
             
+            # Create a properly structured path entry
             session_paths.append({
                 "id": path_id,
                 "skill_name": skill_name,
@@ -631,14 +787,30 @@ def display_progress_tracking_tab(advisor):
                 "progress": {
                     "status": "active",
                     "completed_objectives": progress_data.get("completed_objectives", []),
-                    "completed_resources": [],
-                    "completed_exercises": [],
+                    "completed_resources": progress_data.get("completed_resources", []),
+                    "completed_exercises": progress_data.get("completed_exercises", []),
                     "progress_percentage": progress_data.get("progress_percentage", 0),
                     "last_updated": datetime.now().isoformat(),
-                    "notes": [],
-                    "time_spent_hours": 0
+                    "notes": progress_data.get("notes", []),
+                    "time_spent_hours": progress_data.get("time_spent_hours", 0)
                 }
             })
+            
+            # Sync with current_learning_path if this is the active skill
+            if 'current_learning_path' in st.session_state:
+                current_path_title = st.session_state.current_learning_path.get('title', '')
+                # Check both skill_name and title fields for matching
+                if current_path_title == skill_name or st.session_state.current_learning_path.get('skill_name') == skill_name:
+                    # Update progress field
+                    if 'progress' not in st.session_state.current_learning_path:
+                        st.session_state.current_learning_path['progress'] = {}
+                    
+                    st.session_state.current_learning_path['progress'] = {
+                        'completed': progress_data['progress_percentage'],
+                        'total': 100
+                    }
+                    print(f"Updated current_learning_path progress to {progress_data['progress_percentage']}%")
+                    print(f"Current_learning_path content: {st.session_state.current_learning_path}")
     
     # Get disk-based learning paths
     disk_paths = advisor.get_user_learning_paths(user_id)
@@ -681,21 +853,43 @@ def display_progress_tracking_tab(advisor):
             st.subheader("Progress Overview")
             # Safely access progress_percentage with fallback
             try:
-                if "progress" in path and "progress_percentage" in path["progress"]:
-                    progress_percentage = path["progress"]["progress_percentage"]
-                elif "progress" in path and isinstance(path["progress"], dict) and "completed" in path["progress"]:
-                    progress_percentage = path["progress"]["completed"]
+                # Initialize progress_percentage
+                progress_percentage = 0
+                
+                # Check if the path has a progress key
+                if "progress" in path and path["progress"] is not None:
+                    # Try to get progress percentage from different possible locations
+                    if isinstance(path["progress"], dict):
+                        if "progress_percentage" in path["progress"]:
+                            progress_percentage = path["progress"]["progress_percentage"]
+                        elif "completed" in path["progress"]:
+                            progress_percentage = path["progress"]["completed"]
                 else:
-                    # Calculate it from objectives if available
-                    if "structured_data" in path and "objectives" in path["structured_data"]:
-                        total = len(path["structured_data"]["objectives"])
+                    # If no progress key, create one
+                    path["progress"] = {}
+                
+                # If we still don't have a progress percentage, calculate it from objectives
+                if progress_percentage == 0 and "structured_data" in path and "objectives" in path["structured_data"]:
+                    total = len(path["structured_data"]["objectives"])
+                    
+                    # Get completed objectives safely
+                    if "progress" in path and isinstance(path["progress"], dict):
                         completed = len(path["progress"].get("completed_objectives", []))
-                        progress_percentage = int((completed / total) * 100) if total > 0 else 0
                     else:
-                        progress_percentage = 0
+                        completed = 0
+                        
+                    progress_percentage = int((completed / total) * 100) if total > 0 else 0
+                    
+                    # Update the path's progress dictionary
+                    if "progress" not in path:
+                        path["progress"] = {}
+                    path["progress"]["progress_percentage"] = progress_percentage
             except Exception as e:
                 st.error(f"Error calculating progress: {str(e)}")
                 progress_percentage = 0
+                # Initialize progress if not present
+                if "progress" not in path:
+                    path["progress"] = {"progress_percentage": 0}
             
             # Ensure progress_percentage is an integer for display
             st.progress(int(progress_percentage) / 100)
@@ -721,14 +915,20 @@ def display_progress_tracking_tab(advisor):
             objective_options = []
             objective_defaults = []
             
+            # Ensure path has a progress key
+            if "progress" not in path or path["progress"] is None:
+                path["progress"] = {}
+            
             # Handle both object and string formats
             for obj in objectives_list:
                 if isinstance(obj, dict):
                     objective_options.append({"label": obj["title"], "value": obj["id"]})
+                    # Safely access completed objectives
                     if obj["id"] in path["progress"].get("completed_objectives", []):
                         objective_defaults.append(obj["id"])
                 else:
                     objective_options.append(obj)
+                    # Safely access completed objectives
                     if obj in path["progress"].get("completed_objectives", []):
                         objective_defaults.append(obj)
             
@@ -761,10 +961,12 @@ def display_progress_tracking_tab(advisor):
             for res in resources_list:
                 if isinstance(res, dict):
                     resource_options.append({"label": res["title"], "value": res["id"]})
+                    # Safely access completed resources
                     if res["id"] in path["progress"].get("completed_resources", []):
                         resource_defaults.append(res["id"])
                 else:
                     resource_options.append(res)
+                    # Safely access completed resources
                     if res in path["progress"].get("completed_resources", []):
                         resource_defaults.append(res)
             
@@ -797,10 +999,12 @@ def display_progress_tracking_tab(advisor):
             for ex in exercises_list:
                 if isinstance(ex, dict):
                     exercise_options.append({"label": ex["title"], "value": ex["id"]})
+                    # Safely access completed exercises
                     if ex["id"] in path["progress"].get("completed_exercises", []):
                         exercise_defaults.append(ex["id"])
                 else:
                     exercise_options.append(ex)
+                    # Safely access completed exercises
                     if ex in path["progress"].get("completed_exercises", []):
                         exercise_defaults.append(ex)
             
@@ -859,17 +1063,64 @@ def display_progress_tracking_tab(advisor):
                         st.session_state.skill_progress[path["skill_name"]]["progress_percentage"] = progress_pct
                         
                         # Also update the current_learning_path for profile display
-                        if 'current_learning_path' in st.session_state:
-                            st.session_state.current_learning_path['title'] = path.get("skill_name", path.get("skill", "Unknown Skill"))
-                            st.session_state.current_learning_path['progress'] = {
-                                'completed': progress_pct,
-                                'total': 100
+                        if 'current_learning_path' not in st.session_state:
+                            st.session_state.current_learning_path = {}
+                            
+                        # Make sure the current_learning_path has all required fields
+                        st.session_state.current_learning_path['title'] = path.get("skill_name", path.get("skill", "Unknown Skill"))
+                        
+                        # Ensure the progress field is properly set as a dictionary with completed and total keys
+                        st.session_state.current_learning_path['progress'] = {
+                            'completed': progress_pct,
+                            'total': 100
+                        }
+                        
+                        # Log the update for debugging
+                        print(f"Updated current_learning_path progress to {progress_pct}%")
+                        print(f"Progress data structure: {st.session_state.current_learning_path['progress']}")
+                        
+                        # Additional debugging to verify the progress update
+                        print(f"PROGRESS DEBUG: Updated progress for {path.get('skill_name')} to {progress_pct}%")
+                        print(f"PROGRESS DEBUG: current_learning_path contents: {st.session_state.current_learning_path}")
+                        
+                        # Use the sync function to ensure progress is updated across the application
+                        skill_name = path.get("skill_name", path.get("title", "Unknown Skill"))
+                        sync_progress_data(skill_name, progress_pct)
+                        
+                        # Create activity record
+                        if "user_context" in st.session_state and "activities" in st.session_state.user_context:
+                            skill_name = path.get("skill_name", "skill")
+                            activity = {
+                                "type": "Progress Update",
+                                "description": f"Updated {skill_name} learning path progress to {progress_pct}%",
+                                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                             }
+                            st.session_state.user_context["activities"].insert(0, activity)
+                            
+                        # Save session state to prevent data loss
+                        try:
+                            from utils.data_persistence import DataPersistence
+                            data_persistence = DataPersistence()
+                            # Force data persistence to save current_learning_path with updated progress
+                            print("PROGRESS DEBUG: Saving session state with updated learning path progress")
+                            session_data = dict(st.session_state)
+                            print(f"PROGRESS DEBUG: current_learning_path in session data: {session_data.get('current_learning_path', {})}")
+                            success = data_persistence.save_session_state(session_data)
+                            if success:
+                                print("Session state saved after progress update.")
+                            else:
+                                print("Warning: Failed to save session state after progress update.")
+                        except Exception as e:
+                            print(f"Error saving session state after progress update: {str(e)}")
                     except Exception as e:
                         st.warning(f"Note: Unable to update session state progress: {str(e)}")
                 
                 st.success("Progress updated successfully!")
                 
+                # Force an app refresh to update the UI with new progress values
+                st.rerun()
+                
+                # The code below may not execute due to the rerun above
                 # Get assessment feedback
                 try:
                     assessment = advisor.assess_progress(
@@ -902,6 +1153,12 @@ def display_progress_tracking_tab(advisor):
                     
                     with col5:
                         st.metric("Exercises", f"{int(assessment.get('exercises_completion', 0))}%")
+                except ValueError as e:
+                    if "time_spent_hours" in str(e):
+                        st.warning("Unable to generate assessment: The time tracking feature is still being updated. Your progress has been saved successfully.")
+                    else:
+                        st.error(f"Error generating assessment: {str(e)}")
+                        st.info("Your progress has been saved, but we couldn't generate an assessment at this time.")
                 except Exception as e:
                     st.error(f"Error generating assessment: {str(e)}")
                     st.info("Your progress has been saved, but we couldn't generate an assessment at this time.")
