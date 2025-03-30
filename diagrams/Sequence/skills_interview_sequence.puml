@@ -1,0 +1,73 @@
+@startuml Skills and Interview Preparation
+
+' Optimized for 16:9 presentation format
+skinparam SequenceMessageAlignment center
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 100
+skinparam wrapWidth 150
+skinparam SequenceBoxBackgroundColor white
+skinparam SequenceBoxBorderColor white
+skinparam Padding 2
+skinparam ParticipantPadding 10
+skinparam sequenceArrowThickness 1
+
+' Force wider diagram
+scale 1.5
+
+' Compact participant set
+actor "User" as user
+participant "UI" as ui
+participant "Skills\nAdvisor" as skill
+participant "Interview\nCoach" as coach
+participant "Chatbot" as chat
+participant "Data" as db
+
+title <font size=14>Skills & Interview Preparation</font>
+
+user -> ui : 1. Open Dashboard
+activate ui
+
+' Ultra-compact Skills flow
+group Skills
+    user -> ui : 2. Request Skills
+    ui -> skill : 3. Get Assessment
+    skill -> db : 4. Access Profile
+    skill -> ui : 5. Return Plan
+    ui -> user : 6. Show Skills
+    
+    user -> ui : 7. Get Resources
+    ui -> skill : 8. Find Materials
+    skill -> ui : 9. Return Resources
+    ui -> user : 10. Display Options
+end
+
+' Ultra-compact Interview flow
+group Interview Prep
+    user -> ui : 11. Request Coaching
+    ui -> coach : 12. Get Questions
+    coach -> db : 13. Access Profile
+    coach -> ui : 14. Return Questions
+    ui -> user : 15. Show Practice
+    
+    user -> ui : 16. Submit Answers
+    ui -> coach : 17. Get Feedback
+    coach -> ui : 18. Return Tips
+    ui -> user : 19. Show Results
+end
+
+' Simplified Chatbot
+group Chatbot
+    user -> ui : 20. Open Chat
+    ui -> chat : 21. Start Session
+    chat -> db : 22. Get Context
+    user -> ui : 23. Ask Question
+    ui -> chat : 24. Process Query
+    chat -> ui : 25. Return Answer
+    ui -> user : 26. Show Response
+end
+
+deactivate ui
+
+footer <font size=10>Optimized for 16:9 presentation format</font>
+
+@enduml 

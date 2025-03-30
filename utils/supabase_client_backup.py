@@ -7,7 +7,6 @@ import re
 from dotenv import load_dotenv
 from supabase import create_client, Client
 import streamlit as st
-from datetime import datetime
 
 # Load environment variables from .env file
 load_dotenv()
@@ -112,16 +111,6 @@ def sign_in(email, password):
                 st.session_state.user = response.user
             if "auth_session" not in st.session_state:
                 st.session_state.auth_session = session
-                
-            # Get the user ID from the response
-            user_id = response.user.id if hasattr(response, 'user') and hasattr(response.user, 'id') else None
-            if user_id:
-                print(f"Setting user as authenticated with user_id: {user_id}")
-                # Import login_user locally to avoid circular imports
-                from utils.auth_utils import login_user
-                login_user(user_id, response.user.email)
-            else:
-                print("Warning: Could not get user_id from response")
             
             return session, None
         else:
@@ -679,55 +668,30 @@ def save_user_skill(user_id, skill_data):
         in_progress = skill_data.get("in_progress", False)
         learning_resources = skill_data.get("learning_resources", [])
         
-        # Check if the skill already exists
-        check_response = supabase.table('user_skills').select("*").eq("user_id", user_id).eq("skill_name", skill_name).execute()
-        if check_response.data and len(check_response.data) > 0:
-            # Skill already exists, update it instead of inserting
-            existing_skill = check_response.data[0]
-            existing_id = existing_skill.get("id")
-            
-            # Only update fields that have changed
-            update_data = {}
-            if skill_category and skill_category != existing_skill.get("skill_category"):
-                update_data["skill_category"] = skill_category
-            if proficiency != existing_skill.get("proficiency"):
-                update_data["proficiency"] = proficiency
-            if in_progress != existing_skill.get("in_progress"):
-                update_data["in_progress"] = in_progress
-            if learning_resources != existing_skill.get("learning_resources"):
-                update_data["learning_resources"] = learning_resources
-                
-            # If nothing to update, return the existing skill
-            if not update_data:
-                print(f"Skill '{skill_name}' already exists and has no changes")
-                return existing_skill
-                
-            print(f"Updating existing skill '{skill_name}' for user {user_id}")
-            response = supabase.table('user_skills').update(update_data).eq("id", existing_id).execute()
-        else:
-            # Skill doesn't exist, insert it
-            data_to_save = {
-                "id": skill_id,
-                "user_id": user_id,
-                "skill_name": skill_name,
-                "skill_category": skill_category,
-                "proficiency": proficiency,
-                "in_progress": in_progress,
-                "learning_resources": learning_resources
-            }
-            
-            print(f"Inserting new skill '{skill_name}' for user {user_id}")
-            response = supabase.table('user_skills').insert(data_to_save).execute()
+        data_to_save = {
+            "id": skill_id,
+            "user_id": user_id,
+            "skill_name": skill_name,
+            "skill_category": skill_category,
+            "proficiency": proficiency,
+            "in_progress": in_progress,
+            "learning_resources": learning_resources
+        }
+        
+        print(f"Attempting to save skill '{skill_name}' for user {user_id} to Supabase")
+        
+        # Use upsert to handle the unique constraint on user_id and skill_name
+        response = supabase.table('user_skills').upsert(data_to_save).execute()
         
         if hasattr(response, 'error') and response.error:
             print(f"Supabase error: {response.error}")
             return None
         
-        print(f"Successfully saved skill '{skill_name}' for user {user_id}")
+        print(f"Successfully saved skill '{skill_name}' for user {user_id} to Supabase")
         return response.data
     except Exception as e:
-        # Just log the error and continue rather than raising an exception
-        print(f"Error handling skill '{skill_data.get('name', '')}': {str(e)}")
+        print(f"Error saving user skill to Supabase: {str(e)}")
+        traceback.print_exc()
         return None
 
 def get_user_skills(user_id):
@@ -908,110 +872,4 @@ def get_user_skill_analyses(user_id):
     except Exception as e:
         print(f"Error getting skill analyses from Supabase: {str(e)}")
         traceback.print_exc()
-        return []
-
-def save_skill_progress(user_id, skill_name, progress_data):
-    """
-    Save skill progress data to Supabase.
-    
-    Args:
-        user_id (str): The unique identifier for the user
-        skill_name (str): The name of the skill
-        progress_data (dict): The progress data to save
-    
-    Returns:
-        dict: The response from Supabase
-    """
-    try:
-        supabase = get_supabase_client()
-        
-        # Create a stable ID for the skill progress
-        progress_id = f"{skill_name.lower().replace(' ', '_')}_{user_id}"
-        
-        # Ensure required fields exist
-        if "current_level" not in progress_data:
-            progress_data["current_level"] = progress_data.get("skill_level", "beginner")
-            print(f"Added missing current_level for {skill_name}")
-        
-        if "target_level" not in progress_data:
-            progress_data["target_level"] = "advanced"
-            print(f"Added missing target_level for {skill_name}")
-            
-        if "start_date" not in progress_data:
-            progress_data["start_date"] = datetime.now().strftime("%Y-%m-%d")
-            print(f"Added missing start_date for {skill_name}")
-        
-        if "progress_percentage" not in progress_data:
-            # Calculate if possible
-            if "learning_path" in progress_data and "objectives" in progress_data["learning_path"]:
-                total_objectives = len(progress_data["learning_path"]["objectives"])
-                completed = len(progress_data.get("completed_objectives", []))
-                progress_data["progress_percentage"] = int((completed / total_objectives) * 100) if total_objectives > 0 else 0
-            else:
-                progress_data["progress_percentage"] = 0
-            print(f"Added missing progress_percentage for {skill_name}: {progress_data['progress_percentage']}%")
-        
-        data_to_save = {
-            "id": progress_id,
-            "user_id": user_id,
-            "skill_name": skill_name,
-            "progress_data": progress_data,  # Supabase handles JSONB conversion
-            "updated_at": datetime.now().isoformat()
-        }
-        
-        print(f"Attempting to save skill progress for {skill_name} (user {user_id}) to Supabase")
-        
-        # Use upsert to handle existing records
-        response = supabase.table('skill_progress').upsert(data_to_save).execute()
-        
-        if hasattr(response, 'error') and response.error:
-            print(f"Supabase error: {response.error}")
-            return None
-        
-        print(f"Successfully saved skill progress for {skill_name} (user {user_id}) to Supabase")
-        return response.data
-    except Exception as e:
-        print(f"Error saving skill progress to Supabase: {str(e)}")
-        traceback.print_exc()
-        return None
-
-def get_user_skill_progress(user_id):
-    """
-    Get all skill progress entries for a user from Supabase.
-    
-    Args:
-        user_id (str): The unique identifier for the user
-    
-    Returns:
-        dict: Dictionary mapping skill names to progress data
-    """
-    try:
-        supabase = get_supabase_client()
-        
-        response = supabase.table('skill_progress').select("*").eq("user_id", user_id).execute()
-        
-        if hasattr(response, 'error') and response.error:
-            print(f"Supabase error: {response.error}")
-            return {}
-        
-        # Create a dictionary mapping skill names to progress data
-        skill_progress = {}
-        for record in response.data:
-            skill_name = record.get("skill_name", "")
-            progress_data = record.get("progress_data", {})
-            
-            # If it's a string, parse it
-            if isinstance(progress_data, str):
-                try:
-                    progress_data = json.loads(progress_data)
-                except json.JSONDecodeError:
-                    progress_data = {}
-            
-            if skill_name:
-                skill_progress[skill_name] = progress_data
-        
-        return skill_progress
-    except Exception as e:
-        print(f"Error getting skill progress from Supabase: {str(e)}")
-        traceback.print_exc()
-        return {} 
+        return [] 

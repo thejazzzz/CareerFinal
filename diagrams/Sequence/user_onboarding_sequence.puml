@@ -1,0 +1,42 @@
+@startuml User Onboarding Sequence
+
+' Optimized for 16:9 presentation format
+skinparam SequenceMessageAlignment center
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 100
+skinparam wrapWidth 150
+skinparam SequenceBoxBackgroundColor white
+skinparam SequenceBoxBorderColor white
+skinparam Padding 2
+skinparam ParticipantPadding 15
+skinparam sequenceArrowThickness 1
+
+' Force wider diagram
+scale 1.5
+
+' Minimal participant set
+actor "User" as user
+participant "UI" as ui
+participant "System" as system
+participant "Data\nStorage" as storage
+
+title <font size=14>User Onboarding</font>
+
+user -> ui : 1. Access System
+ui -> user : 2. Show Login/Register
+
+user -> ui : 3. Upload Resume
+ui -> system : 4. Process Profile
+activate system
+
+' Ultra-compact operation
+system -> system : 5. Analyze Resume Data
+system -> storage : 6. Save User Data
+system -> ui : 7. Return Dashboard
+
+deactivate system
+ui -> user : 8. Show Navigation Options
+
+footer <font size=10>Optimized for 16:9 presentation format</font>
+
+@enduml 

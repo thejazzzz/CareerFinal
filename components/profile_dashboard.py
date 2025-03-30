@@ -2,6 +2,7 @@ import streamlit as st
 from typing import Dict, Any
 import plotly.graph_objects as go
 from datetime import datetime
+from components.learning_path_progress import display_learning_path_progress
 
 class ProfileDashboard:
     def __init__(self, user_context: Dict[str, Any]):
@@ -158,18 +159,116 @@ class ProfileDashboard:
             st.info("No recent activities to display")
             return
             
-        for activity in activities[-5:]:  # Show last 5 activities
+        for activity in activities[:5]:  # Show last 5 activities
             with st.expander(
                 f"{activity['type']} - {activity['date']}"
             ):
                 st.write(activity['description'])
+
+    def display_all_activities(self):
+        """Display all activities in a categorized manner"""
+        # Get activities count for the title
+        activities = self.user_context.get('activities', [])
+        activity_count = len(activities)
+        
+        st.title(f"All Activities ({activity_count})")
+        
+        # We're removing this display since it's already shown in the profile
+        # display_learning_path_progress()
+        
+        st.markdown("---")
+        st.subheader("Activity History")
+        
+        if not activities:
+            st.info("No activities to display yet")
+            return
+        
+        # Create categories for different types of activities
+        activity_categories = {
+            "Skill Development": [],
+            "Career Options": [],
+            "Learning Path": [],
+            "Interview": [],
+            "Networking": [],
+            "Profile Update": [],
+            "Other": []
+        }
+        
+        # Sort activities into categories
+        for activity in activities:
+            activity_type = activity['type']
+            if "skill" in activity_type.lower():
+                activity_categories["Skill Development"].append(activity)
+            elif "career" in activity_type.lower() or "job" in activity_type.lower():
+                activity_categories["Career Options"].append(activity)
+            elif "learning" in activity_type.lower() or "path" in activity_type.lower():
+                activity_categories["Learning Path"].append(activity)
+            elif "interview" in activity_type.lower():
+                activity_categories["Interview"].append(activity)
+            elif "network" in activity_type.lower():
+                activity_categories["Networking"].append(activity)
+            elif "profile" in activity_type.lower() or "update" in activity_type.lower():
+                activity_categories["Profile Update"].append(activity)
+            else:
+                activity_categories["Other"].append(activity)
+        
+        # Create tabs for categories that have activities
+        tabs = []
+        for category, category_activities in activity_categories.items():
+            if category_activities:
+                tabs.append(category)
+        
+        if tabs:
+            selected_tab = st.tabs(tabs)
+            
+            for i, tab in enumerate(tabs):
+                with selected_tab[i]:
+                    category_activities = activity_categories[tab]
+                    for activity in sorted(category_activities, key=lambda x: x['date'], reverse=True):
+                        # Use a container with better color contrast
+                        with st.container():
+                            st.markdown(f"""
+                            <div style="
+                                background-color: #2d3748; 
+                                border-radius: 8px; 
+                                padding: 10px 15px; 
+                                margin-bottom: 10px;
+                                border-left: 3px solid #4299e1;
+                            ">
+                                <p style="font-weight: bold; margin-bottom: 5px; color: #e2e8f0;">{activity['date']} - {activity['type']}</p>
+                                <p style="color: #e2e8f0;">{activity['description']}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+        else:
+            st.info("No activities categorized yet")
     
     def render(self):
         """Render the complete dashboard"""
         st.title("Career Profile Dashboard")
         
-        # Profile completion and basic info
-        col1, col2 = st.columns([2, 1])
+        # Debug session state contents
+        print("Profile Dashboard - Session State Contents:")
+        if "user_context" in st.session_state:
+            print(f"  User Context: {st.session_state.user_context.keys()}")
+        if "current_learning_path" in st.session_state:
+            print(f"  Current Learning Path: {st.session_state.current_learning_path}")
+        if "skill_progress" in st.session_state:
+            print(f"  Skills in Progress: {len(st.session_state.skill_progress)}")
+        
+        # Save the current session state to ensure data persistence
+        try:
+            from utils.data_persistence import DataPersistence
+            data_persistence = DataPersistence()
+            success = data_persistence.save_session_state(dict(st.session_state))
+            if success:
+                print("Session state saved automatically when viewing profile.")
+            else:
+                print("Warning: Failed to save session state automatically.")
+        except Exception as e:
+            print(f"Error saving session state automatically: {str(e)}")
+        
+        # Profile completion, basic info, and activities button
+        col1, col2, col3 = st.columns([2, 1, 1])
         with col1:
             self.display_progress_chart()
         with col2:
@@ -182,6 +281,20 @@ class ProfileDashboard:
                 "Experience",
                 self.user_context.get('experience', 'Not specified')
             )
+        with col3:
+            st.markdown("<br><br>", unsafe_allow_html=True)  # Add spacing to align with other columns
+            if st.button("📋 View All Activities", use_container_width=True):
+                st.session_state["show_all_activities"] = True
+                st.rerun()
+                
+        # Display the all activities view when the button is clicked
+        if st.session_state.get("show_all_activities", False):
+            st.markdown("---")
+            self.display_all_activities()
+            if st.button("Close Activities View"):
+                st.session_state["show_all_activities"] = False
+                st.rerun()
+            return  # Early return to only show the activities view
         
         # Skills Section with new layout
         st.markdown("---")
@@ -244,22 +357,4 @@ class ProfileDashboard:
             if interests:
                 st.write(", ".join(interests))
             else:
-                st.write("No interests specified")
-        
-        # Recent activity
-        self.display_recent_activity()
-        
-        # Action items
-        st.subheader("Suggested Actions")
-        completion = self.calculate_profile_completion()
-        if completion < 100:
-            missing_items = []
-            if not self.user_context.get('skills'):
-                missing_items.append("Add your skills")
-            if not self.user_context.get('education'):
-                missing_items.append("Add education details")
-            if not self.user_context.get('interests'):
-                missing_items.append("Add your interests")
-            
-            for item in missing_items:
-                st.warning(item) 
+                st.write("No interests specified") 

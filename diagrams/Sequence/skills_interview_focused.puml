@@ -1,0 +1,55 @@
+@startuml Skills and Interview - Horizontal View
+
+' Extreme horizontal optimization
+skinparam SequenceMessageAlignment right
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 70
+skinparam wrapWidth 100
+skinparam ParticipantPadding 30
+skinparam BoxPadding 5
+skinparam sequenceArrowThickness 1
+skinparam SequenceBoxBackgroundColor white
+skinparam SequenceBoxBorderColor white
+skinparam SequenceLifeLineBorderColor gray
+skinparam SequenceLifeLineBackgroundColor white
+
+' Force ultra-wide diagram
+scale 2.0
+skinparam sequenceReferenceAlignment left
+skinparam sequenceReferenceHeaderBackgroundColor transparent
+
+' Super condensed participant set
+actor "User" as user
+participant "UI" as ui
+participant "Skills" as skill
+participant "Coach" as coach
+participant "DB" as db
+
+title <font size=14>Skills & Interview Flow</font>
+
+' Horizontal layout without activation boxes
+user -> ui: 1. Request
+ui -> skill: 2. Assess Skills
+skill -> db: 3. Get Profile
+skill -> ui: 4. Skills Plan
+ui -> user: 5. Show Skills
+
+user -> ui: 6. Need Resources
+ui -> skill: 7. Find Materials
+skill -> ui: 8. Resources
+ui -> user: 9. Show Options
+
+user -> ui: 10. Interview Prep
+ui -> coach: 11. Get Questions
+coach -> db: 12. Profile Data
+coach -> ui: 13. Questions
+ui -> user: 14. Practice
+
+user -> ui: 15. Submit Answers
+ui -> coach: 16. Analyze
+coach -> ui: 17. Feedback
+ui -> user: 18. Results
+
+footer <font size=10>Ultra-wide horizontal optimization for 16:9 slides</font>
+
+@enduml 

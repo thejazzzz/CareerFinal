@@ -1,0 +1,64 @@
+@startuml Career Planning and Job Search
+
+' Optimized for 16:9 presentation format
+skinparam SequenceMessageAlignment center
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 100
+skinparam wrapWidth 150
+skinparam SequenceBoxBackgroundColor white
+skinparam SequenceBoxBorderColor white
+skinparam Padding 2
+skinparam ParticipantPadding 15
+skinparam sequenceArrowThickness 1
+
+' Force wider diagram
+scale 1.5
+
+' Minimal participant set
+actor "User" as user
+participant "UI" as ui
+participant "Career\nNavigator" as nav
+participant "Job\nSearch" as job
+participant "Data" as db
+
+title <font size=14>Career & Job Search</font>
+
+user -> ui : 1. Access Dashboard
+activate ui
+
+' Super condensed career flow
+group Career Path
+    user -> ui : 2. Select Career Options
+    ui -> nav : 3. Request Paths
+    activate nav
+    nav -> db : 4. Get Profile
+    nav -> ui : 5. Return Paths
+    deactivate nav
+    ui -> user : 6. Show Options
+    
+    user -> ui : 7. Select Path
+    ui -> nav : 8. Get Details
+    nav -> ui : 9. Return Plan
+    ui -> db : 10. Save Choice
+end
+
+' Super condensed job flow
+group Job Search
+    user -> ui : 11. Select Jobs
+    ui -> job : 12. Find Matches
+    activate job
+    job -> db : 13. Get Profile
+    job -> ui : 14. Return Listings
+    deactivate job
+    
+    user -> ui : 15. Select Job
+    ui -> job : 16. Get Details
+    job -> ui : 17. Return Tips
+    ui -> user : 18. Show Info
+end
+
+deactivate ui
+
+footer <font size=10>Optimized for 16:9 presentation format</font>
+
+@enduml 

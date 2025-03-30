@@ -1,9 +1,10 @@
+import datetime
+import json
+import os
+import traceback  # Add import for traceback
 from typing import Dict, List, Any, Optional
 from .base_agent import BaseAgent
 from langchain.prompts import PromptTemplate
-import os
-import datetime
-import json
 import re
 import uuid
 
@@ -795,14 +796,37 @@ class SkillsAdvisorAgent(BaseAgent):
             if "completed_exercises" not in learning_path["progress"]:
                 learning_path["progress"]["completed_exercises"] = []
             
+            # Track what changed to create activity records
+            old_completed_objectives = set(learning_path["progress"]["completed_objectives"])
+            old_completed_resources = set(learning_path["progress"]["completed_resources"])
+            old_completed_exercises = set(learning_path["progress"]["completed_exercises"])
+            
             # Replace completed items instead of updating
             learning_path["progress"]["completed_objectives"] = completed_objectives
             learning_path["progress"]["completed_resources"] = completed_resources
             learning_path["progress"]["completed_exercises"] = completed_exercises
             
+            # Calculate what was newly completed
+            new_objectives = set(completed_objectives) - old_completed_objectives
+            new_resources = set(completed_resources) - old_completed_resources
+            new_exercises = set(completed_exercises) - old_completed_exercises
+            
             # Update time spent
             if time_spent_minutes > 0:
                 learning_path["progress"]["time_spent_hours"] += time_spent_minutes / 60
+            
+            # Ensure structured_data exists and has necessary fields
+            if "structured_data" not in learning_path:
+                learning_path["structured_data"] = {
+                    "objectives": [],
+                    "resources": [],
+                    "exercises": []
+                }
+            else:
+                # Make sure all needed fields exist
+                for key in ["objectives", "resources", "exercises"]:
+                    if key not in learning_path["structured_data"]:
+                        learning_path["structured_data"][key] = []
             
             # Calculate progress percentage
             total_items = (
@@ -823,33 +847,75 @@ class SkillsAdvisorAgent(BaseAgent):
             else:
                 learning_path["progress"]["progress_percentage"] = 0
             
-            # Update last updated timestamp
+            # Update last_updated timestamp
             learning_path["progress"]["last_updated"] = datetime.datetime.now().isoformat()
             
-            # Add reflection if provided
+            # Add reflection notes if provided
             if reflection:
-                if "reflections" not in learning_path:
-                    learning_path["reflections"] = []
-                
-                learning_path["reflections"].append({
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "content": reflection,
-                    "progress_at_reflection": learning_path["progress"]["progress_percentage"]
+                if "notes" not in learning_path["progress"]:
+                    learning_path["progress"]["notes"] = []
+                learning_path["progress"]["notes"].append({
+                    "date": datetime.datetime.now().isoformat(),
+                    "text": reflection
                 })
             
             # Save the updated learning path
-            if user_id:
-                self._save_learning_path(user_id, learning_path)
+            self._save_learning_path(user_id or self.user_profile.get("user_id"), learning_path)
             
-            # Debug log with integer percentage
-            self._log(f"Updated progress for learning path {learning_path_id} - {learning_path['progress']['progress_percentage']}%")
+            # Create activity record if activities are tracked in user_context
+            try:
+                from streamlit import session_state
+                
+                if hasattr(session_state, 'user_context') and 'activities' in session_state.user_context:
+                    # Create activity description
+                    skill_name = learning_path.get("skill_name", "skill")
+                    current_progress = learning_path["progress"]["progress_percentage"]
+                    
+                    activity_description = f"Updated progress on {skill_name} learning path to {current_progress}%"
+                    
+                    # Add details about newly completed items
+                    details = []
+                    if new_objectives:
+                        count = len(new_objectives)
+                        details.append(f"Completed {count} new objective{'s' if count > 1 else ''}")
+                    if new_resources:
+                        count = len(new_resources)
+                        details.append(f"Used {count} new resource{'s' if count > 1 else ''}")
+                    if new_exercises:
+                        count = len(new_exercises)
+                        details.append(f"Finished {count} new exercise{'s' if count > 1 else ''}")
+                    if time_spent_minutes > 0:
+                        details.append(f"Logged {time_spent_minutes/60:.1f} hours of practice")
+                    
+                    if details:
+                        activity_description += f" ({', '.join(details)})"
+                    
+                    # Add the activity - use the imported datetime module
+                    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    new_activity = {
+                        "type": "Learning Path",
+                        "description": activity_description,
+                        "date": current_time
+                    }
+                    
+                    # Insert at the beginning of the activities list
+                    session_state.user_context["activities"].insert(0, new_activity)
+                    
+                    # Log that we added an activity
+                    self._log(f"Added activity record for learning path update: {activity_description}")
+            except Exception as activity_error:
+                self._log(f"Non-fatal error recording activity: {str(activity_error)}")
             
-            return learning_path["progress"]
+            # Log update
+            self._log(f"Updated progress for learning path {learning_path_id}")
+            
+            return learning_path
             
         except Exception as e:
             error_msg = str(e)
             self._log(f"Error updating learning path progress: {error_msg}")
-            raise ValueError(f"Failed to update learning path progress: {error_msg}")
+            traceback.print_exc()
+            raise ValueError(f"Failed to update progress: {error_msg}")
     
     def assess_progress(
         self,
@@ -872,83 +938,92 @@ class SkillsAdvisorAgent(BaseAgent):
             # Get the learning path
             learning_path = self.learning_paths[learning_path_id]
             
-            # Ensure basic structure exists
+            # Initialize progress structure if not present
             if "progress" not in learning_path:
-                learning_path["progress"] = {
-                    "completed_objectives": [],
-                    "completed_resources": [],
-                    "completed_exercises": [],
-                    "time_spent_hours": 0,
-                    "progress_percentage": 0,
-                    "last_updated": datetime.datetime.now().isoformat()
-                }
+                learning_path["progress"] = {}
+                
+            # Initialize progress fields that will be used
+            if "completed_objectives" not in learning_path["progress"]:
+                learning_path["progress"]["completed_objectives"] = []
+                
+            if "completed_resources" not in learning_path["progress"]:
+                learning_path["progress"]["completed_resources"] = []
+                
+            if "completed_exercises" not in learning_path["progress"]:
+                learning_path["progress"]["completed_exercises"] = []
+                
+            if "time_spent_hours" not in learning_path["progress"]:
+                learning_path["progress"]["time_spent_hours"] = 0
+                
+            if "progress_percentage" not in learning_path["progress"]:
+                learning_path["progress"]["progress_percentage"] = 0
+                
+            if "last_updated" not in learning_path["progress"]:
+                learning_path["progress"]["last_updated"] = datetime.datetime.now().isoformat()
             
+            # Initialize structured_data structure if not present
             if "structured_data" not in learning_path:
-                learning_path["structured_data"] = {
-                    "objectives": [],
-                    "resources": [],
-                    "exercises": []
-                }
+                learning_path["structured_data"] = {}
+                
+            # Initialize structured_data fields that will be used
+            if "objectives" not in learning_path["structured_data"]:
+                learning_path["structured_data"]["objectives"] = []
+                
+            if "resources" not in learning_path["structured_data"]:
+                learning_path["structured_data"]["resources"] = []
+                
+            if "exercises" not in learning_path["structured_data"]:
+                learning_path["structured_data"]["exercises"] = []
             
-            # Calculate progress metrics
+            # Get shortcuts to make code more readable
             progress = learning_path["progress"]
             structured_data = learning_path["structured_data"]
             
-            # Ensure all required lists exist
-            for key in ["completed_objectives", "completed_resources", "completed_exercises"]:
-                if key not in progress:
-                    progress[key] = []
+            # Calculate section completion percentages
+            total_objectives = len(structured_data["objectives"])
+            completed_objectives = len(progress["completed_objectives"])
+            objectives_completion = (completed_objectives / total_objectives * 100) if total_objectives > 0 else 0
             
-            for key in ["objectives", "resources", "exercises"]:
-                if key not in structured_data:
-                    structured_data[key] = []
+            total_resources = len(structured_data["resources"])
+            completed_resources = len(progress["completed_resources"])
+            resources_completion = (completed_resources / total_resources * 100) if total_resources > 0 else 0
             
-            # Calculate completion percentages for each section
-            objectives_completion = len(progress["completed_objectives"]) / len(structured_data["objectives"]) if structured_data["objectives"] else 0
-            resources_completion = len(progress["completed_resources"]) / len(structured_data["resources"]) if structured_data["resources"] else 0
-            exercises_completion = len(progress["completed_exercises"]) / len(structured_data["exercises"]) if structured_data["exercises"] else 0
+            total_exercises = len(structured_data["exercises"])
+            completed_exercises = len(progress["completed_exercises"])
+            exercises_completion = (completed_exercises / total_exercises * 100) if total_exercises > 0 else 0
             
-            # Convert percentages to integer for cleaner display
-            objectives_completion = round(objectives_completion * 100, 1)
-            resources_completion = round(resources_completion * 100, 1)
-            exercises_completion = round(exercises_completion * 100, 1)
+            # Calculate overall progress percentage
+            total_items = total_objectives + total_resources + total_exercises
+            completed_items = completed_objectives + completed_resources + completed_exercises
             
-            # Ensure progress_percentage exists
-            if "progress_percentage" not in progress:
-                total_items = (
-                    len(structured_data["objectives"]) +
-                    len(structured_data["resources"]) +
-                    len(structured_data["exercises"])
-                )
-                
-                completed_items = (
-                    len(progress["completed_objectives"]) +
-                    len(progress["completed_resources"]) +
-                    len(progress["completed_exercises"])
-                )
-                
-                progress["progress_percentage"] = int((completed_items / total_items) * 100) if total_items > 0 else 0
+            if total_items > 0:
+                overall_progress = int((completed_items / total_items) * 100)
+            else:
+                overall_progress = 0
             
-            # Generate feedback based on progress
+            # Update progress percentage
+            progress["progress_percentage"] = overall_progress
+            
+            # Prepare the feedback response
             feedback = {
-                "overall_progress": progress["progress_percentage"],
-                "objectives_completion": objectives_completion,
-                "resources_completion": resources_completion,
-                "exercises_completion": exercises_completion,
-                "time_spent_hours": progress.get("time_spent_hours", 0),
+                "overall_progress": overall_progress,
+                "objectives_completion": round(objectives_completion, 1),
+                "resources_completion": round(resources_completion, 1),
+                "exercises_completion": round(exercises_completion, 1),
+                "time_spent_hours": progress["time_spent_hours"],
                 "feedback": [],
                 "next_steps": [],
                 "assessment_date": datetime.datetime.now().isoformat()
             }
             
             # Generate feedback messages
-            if progress["progress_percentage"] < 25:
+            if overall_progress < 25:
                 feedback["feedback"].append("You're just getting started. Keep up the momentum!")
                 feedback["next_steps"].append("Focus on completing the foundational objectives first.")
-            elif progress["progress_percentage"] < 50:
+            elif overall_progress < 50:
                 feedback["feedback"].append("You're making steady progress. Keep going!")
                 feedback["next_steps"].append("Consider spending more time on practical exercises.")
-            elif progress["progress_percentage"] < 75:
+            elif overall_progress < 75:
                 feedback["feedback"].append("You're well on your way to mastering this skill!")
                 feedback["next_steps"].append("Start applying your knowledge to real-world projects.")
             else:
@@ -964,35 +1039,35 @@ class SkillsAdvisorAgent(BaseAgent):
                 feedback["feedback"].append("You've been studying the material, but need more practice with the exercises to solidify your skills.")
             
             # Add time-based feedback
-            if progress["time_spent_hours"] < 5:
+            spent_hours = progress["time_spent_hours"]
+            if spent_hours < 5:
                 feedback["feedback"].append("Consider dedicating more time to this skill to accelerate your progress.")
-            elif progress["time_spent_hours"] > 20 and progress["progress_percentage"] < 50:
+            elif spent_hours > 20 and overall_progress < 50:
                 feedback["feedback"].append("You've spent significant time on this skill. Consider reviewing your learning approach for more efficiency.")
             
             # Add user reflection to the learning path if provided
             if user_reflection:
                 timestamp = datetime.datetime.now().isoformat()
-                if "reflections" not in learning_path:
-                    learning_path["reflections"] = []
+                if "notes" not in progress:
+                    progress["notes"] = []
                 
-                learning_path["reflections"].append({
-                    "timestamp": timestamp,
-                    "content": user_reflection,
-                    "progress_at_reflection": progress["progress_percentage"]
+                progress["notes"].append({
+                    "date": timestamp,
+                    "text": user_reflection
                 })
                 
                 # Save the updated learning path
-                if user_id:
-                    self._save_learning_path(user_id, learning_path)
+                self._save_learning_path(user_id or self.user_profile.get("user_id"), learning_path)
             
-            # Debug log with integer percentage
-            self._log(f"Assessed progress for learning path {learning_path_id} - Overall: {int(progress['progress_percentage'])}%")
+            # Debug log
+            self._log(f"Assessed progress for learning path {learning_path_id} - Overall: {overall_progress}%")
             
             return feedback
             
         except Exception as e:
             error_msg = str(e)
             self._log(f"Error assessing progress: {error_msg}")
+            traceback.print_exc()
             raise ValueError(f"Failed to assess progress: {error_msg}")
     
     def get_user_learning_paths(self, user_id: str) -> List[Dict]:
