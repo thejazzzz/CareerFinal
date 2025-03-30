@@ -12,35 +12,57 @@ def display_learning_path_progress():
         # Detailed debug output to understand the learning path structure
         print(f"DEBUG [learning_path_progress]: Displaying learning path data: {current_path}")
         
-        # Check if the learning path is associated with a skill in skill_progress
+        # First try to get progress from skill_progress if it exists
         skill_name = current_path.get('title', '') or current_path.get('skill_name', '')
-        if skill_name and skill_name in st.session_state.get('skill_progress', {}):
-            skill_progress = st.session_state.skill_progress[skill_name]
-            print(f"DEBUG [learning_path_progress]: Found matching skill in skill_progress: {skill_name}")
-            print(f"DEBUG [learning_path_progress]: Skill progress data: {skill_progress}")
-            
-            # Get progress percentage from skill_progress
-            progress_pct = skill_progress.get('progress_percentage', 0)
+        skill_progress_data = None
+        
+        # Look for exact match and fuzzy match in skill_progress
+        if 'skill_progress' in st.session_state:
+            # Try exact match first
+            if skill_name in st.session_state.skill_progress:
+                skill_progress_data = st.session_state.skill_progress[skill_name]
+                print(f"DEBUG [learning_path_progress]: Found exact skill match in skill_progress: {skill_name}")
+            else:
+                # Try fuzzy match looking for partial name matches
+                for progress_skill_name, progress_data in st.session_state.skill_progress.items():
+                    if (skill_name and progress_skill_name and 
+                        (skill_name.lower() in progress_skill_name.lower() or 
+                         progress_skill_name.lower() in skill_name.lower())):
+                        skill_progress_data = progress_data
+                        print(f"DEBUG [learning_path_progress]: Found fuzzy skill match: {progress_skill_name}")
+                        break
+        
+        # Get progress percentage from skill_progress if available
+        if skill_progress_data:
+            progress_pct = skill_progress_data.get('progress_percentage', 0)
+            print(f"DEBUG [learning_path_progress]: Using progress from skill_progress: {progress_pct}%")
             
             # Ensure progress field exists and contains correct data
-            if 'progress' not in current_path:
-                print(f"WARNING [learning_path_progress]: current_learning_path missing 'progress' field - adding from skill_progress: {progress_pct}%")
+            if 'progress' not in current_path or not current_path['progress']:
+                print(f"INFO [learning_path_progress]: Adding progress field from skill_progress: {progress_pct}%")
                 current_path['progress'] = {
                     'completed': progress_pct,
                     'total': 100
                 }
-            elif 'completed' not in current_path['progress']:
-                print(f"WARNING [learning_path_progress]: current_learning_path progress missing 'completed' field - adding from skill_progress: {progress_pct}%")
+            elif isinstance(current_path['progress'], dict):
+                # Update the progress value
                 current_path['progress']['completed'] = progress_pct
-                
+                print(f"INFO [learning_path_progress]: Updated progress field to: {progress_pct}%")
+            else:
+                print(f"WARNING [learning_path_progress]: Progress field is not a dict: {type(current_path['progress'])}")
+                current_path['progress'] = {
+                    'completed': progress_pct,
+                    'total': 100
+                }
+        
         # Check that all expected fields exist
         if 'title' not in current_path:
             print("WARNING [learning_path_progress]: current_learning_path missing 'title' field")
             current_path['title'] = current_path.get('skill_name', 'Unknown Path')
         
         # Ensure progress field exists and is properly structured
-        if 'progress' not in current_path:
-            print("WARNING [learning_path_progress]: current_learning_path missing 'progress' field")
+        if 'progress' not in current_path or not current_path['progress']:
+            print("WARNING [learning_path_progress]: Setting default progress field")
             current_path['progress'] = {'completed': 0, 'total': 100}
         elif not isinstance(current_path['progress'], dict):
             print(f"WARNING [learning_path_progress]: progress is not a dictionary: {type(current_path['progress'])} - {current_path['progress']}")
@@ -64,6 +86,18 @@ def display_learning_path_progress():
         else:
             print(f"WARNING [learning_path_progress]: progress data is not a dictionary: {type(progress_data)} - {progress_data}")
             progress_percent = 0
+        
+        # Always save the session state to ensure progress is persisted
+        try:
+            from utils.data_persistence import DataPersistence
+            data_persistence = DataPersistence()
+            save_success = data_persistence.save_session_state(dict(st.session_state))
+            if save_success:
+                print(f"INFO [learning_path_progress]: Successfully saved session with progress {progress_percent}%")
+            else:
+                print(f"WARNING [learning_path_progress]: Failed to save session state")
+        except Exception as e:
+            print(f"ERROR [learning_path_progress]: Error saving session: {str(e)}")
         
         # Print debug info
         title = current_path.get('title', 'Unnamed Path')
@@ -93,6 +127,10 @@ def display_learning_path_progress():
             st.markdown(f"<p style='color: white; text-align: center; font-size: 24px; font-weight: bold;'>{progress_percent}%</p>", unsafe_allow_html=True)
         
         st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Button to refresh progress
+        if st.button("Refresh Progress"):
+            st.experimental_rerun()
     else:
         # Print debug info
         print("INFO [learning_path_progress]: No current_learning_path found in session state")

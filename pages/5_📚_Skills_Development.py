@@ -59,7 +59,19 @@ def sync_progress_data(skill_name, progress_percentage):
             current_path_title = current_path.get('title', '')
             current_path_skill = current_path.get('skill_name', '')
             
-            if current_path_title == skill_name or current_path_skill == skill_name:
+            # Check if any part of the skill name matches
+            skill_match = (
+                (current_path_title and skill_name and current_path_title.lower() in skill_name.lower()) or
+                (current_path_skill and skill_name and current_path_skill.lower() in skill_name.lower()) or
+                (current_path_title and skill_name and skill_name.lower() in current_path_title.lower()) or
+                (current_path_skill and skill_name and skill_name.lower() in current_path_skill.lower())
+            )
+            
+            if current_path_title == skill_name or current_path_skill == skill_name or skill_match:
+                # Force update the title to match for better tracking
+                if current_path_title != skill_name and current_path_skill == skill_name:
+                    current_path['title'] = skill_name
+                
                 # Update progress information
                 if 'progress' not in current_path:
                     current_path['progress'] = {}
@@ -68,17 +80,21 @@ def sync_progress_data(skill_name, progress_percentage):
                 current_path['progress']['total'] = 100
                 
                 print(f"Synced current_learning_path progress to {progress_percentage}%")
+                print(f"Current learning path after update: {current_path}")
         
         # Update skill progress if it exists
         if 'skill_progress' in st.session_state and skill_name in st.session_state.skill_progress:
             st.session_state.skill_progress[skill_name]['progress_percentage'] = progress_percentage
             print(f"Synced skill_progress data for {skill_name} to {progress_percentage}%")
         
-        # Persist changes
+        # Persist changes immediately
         from utils.data_persistence import DataPersistence
         data_persistence = DataPersistence()
-        data_persistence.save_session_state(st.session_state)
+        data_persistence.save_session_state(dict(st.session_state))
         print(f"Saved session state after progress update for {skill_name}")
+        
+        # Force a session state synchronization to ensure other parts of the app see the changes
+        st.experimental_rerun()
     except Exception as e:
         print(f"Error syncing progress data: {str(e)}")
 
