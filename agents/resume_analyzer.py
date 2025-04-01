@@ -875,115 +875,95 @@ class ResumeAnalyzerAgent(BaseAgent):
             combined[key] = pattern_results.get(key) or llm_results.get(key) or ""
         return combined
 
-    def process_resume(self, file_path: str) -> Dict[str, Any]:
-        """Process a resume file and extract structured information with better error handling"""
+    def _format_experience(self, experience_lines: List[str]) -> List[Dict]:
+        """Format experience data into structured format"""
+        formatted_experience = []
+        current_entry = {}
+        
+        for line in experience_lines:
+            # Check for date pattern (e.g., "2020 - Present" or "Jan 2020 - Dec 2023")
+            date_match = re.search(r'(?i)(\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})\s*[-–]\s*(\d{4}|Present)', line)
+            
+            if date_match:
+                # If we have a previous entry, save it
+                if current_entry:
+                    formatted_experience.append(current_entry)
+                
+                # Start new entry
+                current_entry = {
+                    'dates': line.strip(),
+                    'title': '',
+                    'company': '',
+                    'description': []
+                }
+            elif current_entry:
+                # If we're in an entry, check for title/company pattern
+                title_company_match = re.search(r'^([A-Z][a-zA-Z\s]+)\s*[|,]\s*([A-Z][a-zA-Z\s]+)$', line)
+                if title_company_match:
+                    current_entry['title'] = title_company_match.group(1).strip()
+                    current_entry['company'] = title_company_match.group(2).strip()
+                else:
+                    # Add to description if not empty
+                    if line.strip():
+                        current_entry['description'].append(line.strip())
+        
+        # Add the last entry if exists
+        if current_entry:
+            formatted_experience.append(current_entry)
+        
+        return formatted_experience
+
+    def process_resume(self, file_path: str) -> Dict:
+        """Process resume and return structured data"""
         try:
-            # Validate file exists
-            if not os.path.exists(file_path):
-                return {
-                    "error": True,
-                    "message": f"File not found: {file_path}",
-                    "structured_data": {"skills": []}
-                }
-            
-            # Extract text based on file format
-            if file_path.lower().endswith('.pdf'):
-                text = self.extract_text_from_pdf(file_path)
-            elif file_path.lower().endswith(('.docx', '.doc')):
-                return {
-                    "error": True,
-                    "message": f"Unsupported file format: {file_path}",
-                    "structured_data": {"skills": []}
-                }
-            elif file_path.lower().endswith('.txt'):
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    text = f.read()
-            else:
-                return {
-                    "error": True,
-                    "message": f"Unsupported file format: {file_path}",
-                    "structured_data": {"skills": []}
-                }
-            
-            # Validate extracted text
-            validation_result = self.validate_extracted_text(text)
-            if validation_result.get("error", False):
-                validation_result["structured_data"] = {"skills": []}
-                return validation_result
-            
-            # Process the text
-            cleaned_text = self.clean_extracted_text(text)
-            preprocessed_text = self.preprocess_text(cleaned_text)
+            # Extract text from PDF
+            text = self.extract_text_from_pdf(file_path)
             
             # Extract sections
-            sections = self.extract_sections(preprocessed_text)
+            sections = self.extract_sections(text)
             
-            # Extract skills directly from preprocessed text
-            skills_list = list(self._extract_skills_pattern(preprocessed_text))
+            # Format experience data
+            formatted_experience = self._format_experience(sections.get('experience', []))
             
-            # Add skills from skills section if it exists
-            for section_name, section_data in sections.items():
-                if any(kw in section_name.lower() for kw in ["skill", "technology", "competenc", "proficien"]):
-                    # Make sure we're getting the content string from the section data
-                    section_content = section_data['content'] if isinstance(section_data, dict) and 'content' in section_data else section_data
-                    
-                    # Ensure section_content is a string before passing to _extract_skills_pattern
-                    if isinstance(section_content, str):
-                        additional_skills = self._extract_skills_pattern(section_content)
-                        skills_list.extend(list(additional_skills))
+            # Extract skills with context
+            skills_with_context = self.extract_skills_with_context(text)
             
-            # Remove duplicates and validate
-            unique_skills = set(skills_list)
-            validated_skills = self._validate_skills(unique_skills)
+            # Calculate total years of experience
+            total_years = 0
+            for entry in formatted_experience:
+                dates = entry.get('dates', '')
+                if dates:
+                    # Extract years from date range
+                    years = re.findall(r'\d{4}', dates)
+                    if len(years) >= 2:
+                        total_years += int(years[1]) - int(years[0])
             
-            # Debug output
-            if self.verbose:
-                print(f"Extracted {len(validated_skills)} skills from resume")
-                print(f"Skills: {validated_skills}")
-            
-            # Convert to simple list of dictionaries for the structured data
-            structured_skills = []
-            for skill in validated_skills:
-                structured_skills.append({
-                    "name": skill,
-                    "confidence": 0.8,  # Default high confidence
-                    "category": "technical"  # Default category
-                })
-            
-            # Analyze the resume using our optimized method (pattern-based with minimal LLM)
-            analysis_result = self.analyze_resume(preprocessed_text)
-            
-            # Create the structured data with skills as a simple list
+            # Create structured data
             structured_data = {
-                "skills": structured_skills,
-                "sections": sections,
-                "education": self._extract_education_pattern(preprocessed_text),
-                "current_role": analysis_result.get("current_role", ""),
-                "experience": analysis_result.get("experience", ""),
-                "professional_summary": analysis_result.get("professional_summary", "")
+                'user_role': self._extract_current_role(sections.get('experience', [])),
+                'work_experience': formatted_experience,
+                'total_years_experience': total_years,
+                'skills': [
+                    {'name': skill['skill'], 'category': category}
+                    for category, skills in skills_with_context.items()
+                    for skill in skills
+                ],
+                'education': sections.get('education', []),
+                'projects': sections.get('projects', []),
+                'certifications': sections.get('certifications', [])
             }
             
-            # Add the structured data to the response
+            # Generate feedback
+            feedback = self._generate_feedback(structured_data)
+            
             return {
-                "error": False,
-                "message": "Resume processed successfully",
-                "text": preprocessed_text,
-                "analysis": analysis_result,
-                "structured_data": structured_data
+                'structured_data': structured_data,
+                'feedback': feedback
             }
             
         except Exception as e:
-            import traceback
-            error_msg = f"Error processing resume: {str(e)}"
-            if self.verbose:
-                tb = traceback.format_exc()
-                print(f"Exception traceback: {tb}")
-                error_msg += f"\n{tb}"
-            return {
-                "error": True,
-                "message": error_msg,
-                "structured_data": {"skills": []}
-            }
+            self._log(f"Error processing resume: {str(e)}")
+            raise
 
     def analyze_sections(self, sections: Dict) -> Dict:
         """Enhanced LLM analysis with more specific prompts"""

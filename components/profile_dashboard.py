@@ -343,7 +343,85 @@ class ProfileDashboard:
                         if st.button("Remove", key=f"remove_edu_{i}"):
                             self.user_context["education"].pop(i)
                             st.rerun()
-        
+
+        # Experience Section
+        st.markdown("---")
+        st.subheader("Work Experience")
+        with st.expander("Add/Edit Experience", expanded=True):
+            # Form for adding new experience
+            with st.form("add_experience"):
+                col1, col2, col3 = st.columns([2, 2, 1])
+                with col1:
+                    title = st.text_input("Job Title")
+                with col2:
+                    company = st.text_input("Company")
+                with col3:
+                    duration = st.text_input("Duration (e.g., 2020-2023)")
+                
+                description = st.text_area("Job Description")
+                
+                if st.form_submit_button("Add Experience"):
+                    if title and company and duration:
+                        new_experience = {
+                            "title": title,
+                            "company": company,
+                            "duration": duration,
+                            "description": description
+                        }
+                        if "experience" not in self.user_context:
+                            self.user_context["experience"] = []
+                        self.user_context["experience"].append(new_experience)
+                        st.success("Experience added successfully!")
+                    else:
+                        st.error("Please fill all required fields")
+            
+            # Display and edit existing experience
+            experience_data = self.user_context.get("experience", [])
+            if experience_data:
+                st.write("Current Experience:")
+                # Handle both string and dictionary formats
+                if isinstance(experience_data, str):
+                    # If experience is a string, display it as is
+                    st.markdown(f"""
+                    <div style="
+                        background-color: #2d3748; 
+                        border-radius: 8px; 
+                        padding: 1rem; 
+                        margin-bottom: 1rem;
+                        border-left: 3px solid #4299e1;
+                    ">
+                        <div style="color: #e2e8f0;">
+                            {experience_data}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    # If experience is a list of dictionaries, display each entry
+                    for i, exp in enumerate(experience_data):
+                        with st.container():
+                            st.markdown(f"""
+                            <div style="
+                                background-color: #2d3748; 
+                                border-radius: 8px; 
+                                padding: 1rem; 
+                                margin-bottom: 1rem;
+                                border-left: 3px solid #4299e1;
+                            ">
+                                <div style="color: #4299e1; font-weight: bold; margin-bottom: 0.5rem;">
+                                    {exp.get('title', '')} at {exp.get('company', '')}
+                                </div>
+                                <div style="color: #a0aec0; margin-bottom: 0.5rem;">
+                                    {exp.get('duration', '')}
+                                </div>
+                                <div style="color: #e2e8f0;">
+                                    {exp.get('description', '')}
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            if st.button("Remove", key=f"remove_exp_{i}"):
+                                self.user_context["experience"].pop(i)
+                                st.rerun()
+
         # Career goals and interests
         col3, col4 = st.columns(2)
         with col3:

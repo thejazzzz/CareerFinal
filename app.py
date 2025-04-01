@@ -150,15 +150,56 @@ def main():
         st.title("Welcome to Career Assistant")
         st.write("Please log in or create an account to continue.")
         
-        # Show features of the app for non-logged in users
-        st.subheader("Features")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            feature_card("📝", "Resume Analysis", "Upload your resume and get personalized insights to improve it", "Learn More", "#")
-        with col2:
-            feature_card("🔍", "Job Search", "Find job opportunities that match your skills and preferences", "Learn More", "#")
-        with col3:
-            feature_card("📚", "Skills Development", "Get recommendations to develop the skills you need", "Learn More", "#")
+        # Add a small spacer
+        st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
+
+        
+        # Add a section about the AI-powered nature of the platform
+        st.markdown("""
+        <div style="
+            background-color: #2d3748;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-top: .1rem;
+            text-align: center;
+        ">
+            <h2 style="color: white; margin-bottom: 0.1rem;">AI-Powered Career Development</h2>
+            <p style="color: #e2e8f0; font-size: 1.1rem; margin-bottom: 1.5rem;">
+                Our multi-agent system combines advanced AI technologies to provide personalized career guidance.
+                From resume analysis to interview preparation, every feature is enhanced by artificial intelligence.
+            </p>
+            <div style="display: flex; justify-content: center; gap: 2rem; flex-wrap: wrap;">
+                <div style="text-align: center;">
+                    <div style="font-size: 2rem; margin-bottom: 0.5rem;">🎯</div>
+                    <p style="color: #e2e8f0; margin: 0;">Personalized Recommendations</p>
+                </div>
+                <div style="text-align: center;">
+                    <div style="font-size: 2rem; margin-bottom: 0.5rem;">⚡</div>
+                    <p style="color: #e2e8f0; margin: 0;">Real-time Feedback</p>
+                </div>
+                <div style="text-align: center;">
+                    <div style="font-size: 2rem; margin-bottom: 0.5rem;">📈</div>
+                    <p style="color: #e2e8f0; margin: 0;">Progress Tracking</p>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Add a call-to-action section
+        st.markdown("""
+        <div style="
+            background-color: #4299e1;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-top: 2rem;
+            text-align: center;
+        ">
+            <h2 style="color: white; margin-bottom: 1rem;">Ready to Start Your Career Journey?</h2>
+            <p style="color: white; font-size: 1.1rem; margin-bottom: 1.5rem;">
+                Create your account now and get personalized career guidance powered by AI.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
     else:
         if not st.session_state.profile_completed:
             # Hero section for new users
@@ -214,11 +255,7 @@ def main():
                         
                         # Extract skills and experience
                         extracted_skills = analysis["structured_data"].get("skills", [])
-                        extracted_experience = next(
-                            (exp for exp in analysis["structured_data"].get("work_experience", [])
-                            if "years" in exp.lower()),
-                            ""
-                        )
+                        extracted_experience = analysis["structured_data"].get("work_experience", [])
                         
                         st.success("✅ Resume analyzed successfully!")
                         resume_analyzed = True
@@ -255,18 +292,27 @@ def main():
                                     """, unsafe_allow_html=True)
                             
                             if extracted_experience:
-                                st.write("<span style='color: white;'><strong>Extracted Experience:</strong></span>", unsafe_allow_html=True)
-                                st.markdown(f"""
-                                <div style="
-                                    padding: 0.75rem; 
-                                    background-color: #2d3748; 
-                                    border-radius: 8px;
-                                    border-left: 3px solid #4299e1;
-                                    margin-bottom: 1rem;
-                                ">
-                                    <span style="color: white;">{extracted_experience}</span>
-                                </div>
-                                """, unsafe_allow_html=True)
+                                st.write("<span style='color: white;'><strong>Work Experience:</strong></span>", unsafe_allow_html=True)
+                                for entry in extracted_experience:
+                                    st.markdown(f"""
+                                    <div style="
+                                        padding: 1rem; 
+                                        background-color: #2d3748; 
+                                        border-radius: 8px;
+                                        border-left: 3px solid #4299e1;
+                                        margin-bottom: 1rem;
+                                    ">
+                                        <div style="color: #4299e1; font-weight: bold; margin-bottom: 0.5rem;">
+                                            {entry.get('title', '')} at {entry.get('company', '')}
+                                        </div>
+                                        <div style="color: #a0aec0; margin-bottom: 0.5rem;">
+                                            {entry.get('dates', '')}
+                                        </div>
+                                        <div style="color: #e2e8f0;">
+                                            {''.join(f'<div style="margin-bottom: 0.25rem;">• {desc}</div>' for desc in entry.get('description', []))}
+                                        </div>
+                                    </div>
+                                    """, unsafe_allow_html=True)
                             
                             # Add detailed resume analysis
                             st.write("<span style='color: white;'><strong>Resume Feedback:</strong></span>", unsafe_allow_html=True)
@@ -338,15 +384,13 @@ def main():
                                 
                                 # Extract values from the analysis
                                 current_role_default = structured_data.get('user_role', '')
-                                experience_default = next(
-                                    (exp for exp in structured_data.get('work_experience', []) 
-                                    if 'years' in exp.lower()), '')
+                                experience_default = structured_data.get('work_experience', [])
                                 skills_default = [skill['name'] for skill in structured_data.get('skills', [])]
                             
                             # Form fields with defaults from resume
                             current_role = st.text_input("Current Role", value=current_role_default)
                             target_role = st.text_input("Target Role", value="")
-                            experience = st.text_input("Years of Experience", value=experience_default)
+                            experience = experience_default
                             
                             # Skills input with option to use extracted skills
                             st.write("<span style='color: white;'><strong>Skills</strong></span>", unsafe_allow_html=True)
@@ -791,11 +835,7 @@ if is_authenticated() and st.session_state.profile_completed:
             
             # Extract skills and other information
             extracted_skills = [skill['name'] for skill in analysis["structured_data"].get("skills", [])]
-            extracted_experience = next(
-                (exp for exp in analysis["structured_data"].get("work_experience", [])
-                if "years" in exp.lower()),
-                st.session_state.user_context.get("experience", "")
-            )
+            extracted_experience = analysis["structured_data"].get("work_experience", [])
             extracted_current_role = analysis["structured_data"].get("user_role", 
                                                                      st.session_state.user_context.get("user_role", ""))
             
