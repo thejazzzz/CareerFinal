@@ -2,7 +2,9 @@ import streamlit as st
 from typing import Dict, Any
 import plotly.graph_objects as go
 from datetime import datetime
-from components.learning_path_progress import display_learning_path_progress
+from components.learning_path_progress import display_learning_path_progress, display_your_tracked_skills
+import pandas as pd
+import plotly.express as px
 
 class ProfileDashboard:
     def __init__(self, user_context: Dict[str, Any]):
@@ -294,9 +296,17 @@ class ProfileDashboard:
             if st.button("Close Activities View"):
                 st.session_state["show_all_activities"] = False
                 st.rerun()
-            return  # Early return to only show the activities view
+            return
         
-        # Skills Section with new layout
+        # Display your tracked skills only (not learning path)
+        st.markdown("---")
+        display_your_tracked_skills()
+        
+        # Recent activity preview
+        st.markdown("---")
+        self.display_recent_activity()
+        
+        # Skills analysis
         st.markdown("---")
         self.render_skills_section()
         

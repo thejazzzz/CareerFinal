@@ -902,7 +902,7 @@ class ResumeAnalyzerAgent(BaseAgent):
                 if title_company_match:
                     current_entry['title'] = title_company_match.group(1).strip()
                     current_entry['company'] = title_company_match.group(2).strip()
-                else:
+            else:
                     # Add to description if not empty
                     if line.strip():
                         current_entry['description'].append(line.strip())

@@ -1,4 +1,5 @@
 import streamlit as st
+from datetime import datetime
 
 def display_learning_path_progress():
     """Display the current learning path progress in the profile."""
@@ -128,8 +129,9 @@ def display_learning_path_progress():
         
         st.markdown("</div>", unsafe_allow_html=True)
         
-        # Button to refresh progress
-        if st.button("Refresh Progress"):
+        # Button to refresh progress with unique key based on path title and timestamp
+        button_key = f"refresh_learning_path_{title.lower().replace(' ', '_')}_{int(datetime.now().timestamp())}"
+        if st.button("Refresh Progress", key=button_key):
             st.experimental_rerun()
     else:
         # Print debug info
@@ -144,5 +146,74 @@ def display_learning_path_progress():
             border: 1px solid #4a5568;
         ">
             <p style='color: #e2e8f0;'>No active learning path. Create one in the Skills Development section to start tracking your progress!</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+def display_your_tracked_skills():
+    """Display tracked skills while filtering out those already in the resume."""
+    # Get user skills from resume
+    resume_skills = []
+    if "user_context" in st.session_state and "skills" in st.session_state.user_context:
+        resume_skills = [skill.lower().strip() for skill in st.session_state.user_context["skills"]]
+    
+    # Get tracked skills from skill_progress
+    tracked_skills = []
+    if "skill_progress" in st.session_state:
+        for skill_name, progress_data in st.session_state.skill_progress.items():
+            # Only include skills not already in the resume
+            if skill_name.lower().strip() not in resume_skills:
+                current_level = progress_data.get("current_level", "beginner")
+                target_level = progress_data.get("target_level", "advanced")
+                progress_pct = progress_data.get("progress_percentage", 0)
+                tracked_skills.append({
+                    "name": skill_name,
+                    "current_level": current_level,
+                    "target_level": target_level,
+                    "progress": progress_pct
+                })
+    
+    # Display tracked skills
+    if tracked_skills:
+        st.markdown("<h3 style='color: white; margin-bottom: 15px;'>Your Tracked Skills</h3>", unsafe_allow_html=True)
+        for skill in tracked_skills:
+            st.markdown(f"""
+            <div style="
+                background-color: #2d3748;
+                border-radius: 8px;
+                padding: 12px;
+                margin-bottom: 10px;
+                border-left: 3px solid #4299e1;
+            ">
+                <p style="color: white; font-weight: bold; margin-bottom: 5px;">{skill['name']} ({skill['current_level']} → {skill['target_level']})</p>
+                <div style="background-color: #4a5568; border-radius: 4px; height: 8px; width: 100%;">
+                    <div style="background-color: #4299e1; border-radius: 4px; height: 8px; width: {skill['progress']}%;"></div>
+                </div>
+                <p style="color: #a0aec0; text-align: right; margin-top: 5px; font-size: 0.8em;">{skill['progress']}% complete</p>
+            </div>
+            """, unsafe_allow_html=True)
+    elif resume_skills:
+        st.markdown("""
+        <div style="
+            background-color: #2d3748;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid #4a5568;
+        ">
+            <h3 style='color: white; margin-bottom: 15px;'>Your Tracked Skills</h3>
+            <p style='color: #e2e8f0;'>No skills being tracked that aren't already in your resume. Visit the Skills Development section to track new skills!</p>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div style="
+            background-color: #2d3748;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid #4a5568;
+        ">
+            <h3 style='color: white; margin-bottom: 15px;'>Your Tracked Skills</h3>
+            <p style='color: #e2e8f0;'>No skills being tracked yet. Visit the Skills Development section to start tracking skills!</p>
         </div>
         """, unsafe_allow_html=True)
